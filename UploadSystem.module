@@ -1,0 +1,53 @@
+<?php
+
+/*
+* A² Fab Lab Upload System
+* Thomas R. Storey (trstorey.sysreturn.net)
+* contact: storey.thomas@gmail.com
+* 2/12/15
+* Makes an admin page to manage the upload system and uploaded files
+*/
+
+    class UploadSystem extends WireData implements Module, ConfigurableModule {
+
+        public static function getModuleInfo() {
+            return array(
+                'title' => 'A² Fab Lab Upload System',
+                'summary' => 'Makes an admin page to manage the upload system and uploaded files.',
+                'version' => 1,
+                'autoload' => true 
+            );
+        }
+
+        public function __construct() {
+            // optionally set our default values before ProcessWire configures the module
+            $this->fullname = '';
+            $this->email = '';
+        }
+
+        public function init() {
+            // you can now assume that your configuration data has been populated to the module
+            // meaning you can access $this->fullname; or $this->email; in any of your module's functions
+        }
+
+        public static function getModuleConfigInputfields(array $data) {
+            $inputfields = new InputfieldWrapper(); 
+
+            // ask for their full name
+            $field = wire('modules')->get('InputfieldText');
+            $field->name = 'fullname';
+            $field->label = "Enter your full name";
+            if(isset($data['fullname'])) $field->value = $data['fullname'];
+            $inputfields->add($field); 
+
+            // ask for an email address
+            $field = wire('modules')->get('InputfieldEmail'); 
+            $field->name = 'email';
+            $field->label = 'Your E-Mail Address';
+            if(isset($data['email'])) $field->value = $data['email'];
+            $inputfields->add($field);
+
+            return $inputfields; 
+        }
+    }
+?>
