@@ -8,7 +8,7 @@
 * Makes an admin page to manage the upload system and uploaded files
 */
 
-    class UploadSystem extends WireData implements Module, ConfigurableModule {
+    class UploadSystem extends Process implements Module, ConfigurableModule {
 
         public static function getModuleInfo() {
             return array(
@@ -28,6 +28,37 @@
         public function init() {
             // you can now assume that your configuration data has been populated to the module
             // meaning you can access $this->fullname; or $this->email; in any of your module's functions
+        }
+
+        public function ___install() {
+            $page = $this->getInstalledPage();
+            $this->message("Installed to {$page->path}"); 
+        }
+
+        public function ___uninstall() {
+            $page = $this->getInstalledPage();  
+            if($page->id) { 
+                $this->message("Removed {$page->path}");
+                $this->pages->delete($page); 
+            }
+        }
+
+        protected function getInstalledPage() {
+            $parent = $this->pages->get("name=module,parent=".$this->config->adminRootPageID); 
+            $page = $parent->child("name=uploadsystem"); 
+
+            if(!$page->id) {    
+                $page = new Page();
+                $page->parent = $parent; 
+                $page->template = $this->templates->get('admin');
+                $page->name = "uploadsystem"; 
+                $page->title = "Upload Management Page";
+                //$page->addStatus(Page::statusHidden);
+                $page->process = $this; 
+                $page->sort = $parent->numChildren;
+                $page->save();
+            }
+            return $page;   
         }
 
         public static function getModuleConfigInputfields(array $data) {
