@@ -30,8 +30,8 @@
             // meaning you can access $this->fullname; or $this->email; in any of your module's functions
 
             if(isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], $this->upload_page_url) !== false) {
-                //$this->addHook('ProcessPageView::execute', $this, 'addUploadForm'); 
-                $this->addHookBefore('Page::render', $this, 'prependUploadForm');
+                $this->addHookBefore('PageRender::renderPage', $this, 'prependUploadHandler');
+                $this->addHook('ProcessPageView::execute', $this, 'addUploadForm');
             }
 
 
@@ -57,11 +57,19 @@
                 check the page to see if it has some kind of tag, category...something that can be attached
                 to a sub-page template from the page->edit screen.
             */
-            //$event->return = str_ireplace("[upload_form]", $this->form_markup, $event->return); 
+            $markup = file_get_contents($this->upload_form_filepath);
+            $event->return = str_ireplace("[upload_form]", $markup, $event->return); 
         }
 
-        public function prependUploadForm(HookEvent $event) {
-            $event->arguments('options')['prependFile'] = $this->upload_form_filepath;
+        public function prependUploadHandler(HookEvent $event) {
+            $render = $event->arguments(0);
+
+            $page = $render->object;
+
+            $newOptions = array(
+                'prependFile' => $this->upload_handler_filepath
+                );
+            $render->arguments(0, $newOptions);
         }
 
         protected function getInstalledPage() {
@@ -90,6 +98,13 @@
             $field->name = 'upload_form_filepath';
             $field->label = "Upload form markup";
             if(isset($data['upload_form_filepath'])) $field->value = $data['upload_form_filepath'];
+            $inputfields->add($field);
+
+            // ask for upload handler
+            $field = wire('modules')->get('InputfieldText');
+            $field->name = 'upload_handler_filepath';
+            $field->label = "Upload handler file";
+            if(isset($data['upload_handler_filepath'])) $field->value = $data['upload_handler_filepath'];
             $inputfields->add($field); 
 
             // ask for upload page url
