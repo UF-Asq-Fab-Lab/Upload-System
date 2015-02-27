@@ -1,6 +1,4 @@
 
-<h1 class="pageheader">Upload 3D File</h1>
-
 <form method="post" action="./" enctype="multipart/form-data">
 	<p><label for="checklist">Ready to Print Checklist:</label></p>
 	<p><input type="checkbox" required/> Is your model <a href="/faq/3d-printing-faq/">water-tight?</a><br></p>

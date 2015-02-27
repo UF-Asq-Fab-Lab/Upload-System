@@ -8,6 +8,20 @@
 * Makes an admin page to manage the upload system and uploaded files
 */
 
+/*
+ISSUES
+createRepeater makes a repeater alright, but it does not create the parent page.
+because it does not create the parent page, we can't get a parent page id, which is necessary for various
+repeater functions. Especially, making an inputfield for the config page.
+
+I can force it to generate a page by going to the field itself in admin and editing the fields.
+However, while that does make the inputfield in the config page work, I can't subsequently save and edit repeater items.
+I will bet that this is because the parent_id field inside the FieldtypeRepeater object is still set to 0 - so it gets #NaN when it tries to find it's number,
+and can't find the parent to save the repeater page to. This is also probably why I don't get any fields when I make new repeater items on the config page.
+
+So, the remedy is to find why the page does not get generated, and force it to generate during createRepeater, causing the parent_id to get registered correctly
+*/
+
     class UploadSystem extends Process implements Module, ConfigurableModule {
 
         public static function getModuleInfo() {
@@ -21,8 +35,7 @@
 
         public function __construct() {
             // optionally set our default values before ProcessWire configures the module
-            $this->fullname = '';
-            $this->email = '';
+
         }
 
         public function init() {
@@ -37,9 +50,94 @@
 
         }
 
+        /**
+         * Creates a repeater field with associated fieldgroup, template, and page
+         *
+         * @param string $repeaterName The name of your repeater field
+         * @param string $repeaterFields List of field names to add to the repeater, separated by spaces
+         * @param string $repeaterLabel The label for your repeater
+         * @param string $repeaterTags Tags for the repeater field
+         * @return Returns the new Repeater field
+         *
+         */
+        public function createRepeater($repeaterName,$repeaterFields,$repeaterLabel,$repeaterTags) {
+            $fieldsArray = explode(' ',$repeaterFields);
+            $f = new Field();
+            $f->type = $this->modules->get("FieldtypeRepeater");
+            $f->name = $repeaterName;
+            $f->label = $repeaterLabel;
+            $f->tags = $repeaterTags;
+            $f->repeaterReadyItems = 3;
+            
+            //Create fieldgroup
+            $repeaterFg = new Fieldgroup();
+            $repeaterFg->name = "repeater_$repeaterName";
+            
+            //Add fields to fieldgroup
+            foreach($fieldsArray as $field) {
+                $repeaterFg->append($this->fields->get($field));
+            }
+            
+            $repeaterFg->save();
+            
+            //Create template
+            $repeaterT = new Template();
+            $repeaterT->name = "repeater_$repeaterName";
+            $repeaterT->flags = 8;
+            $repeaterT->noChildren = 1;
+            $repeaterT->noParents = 1;
+            $repeaterT->noGlobal = 1;
+            $repeaterT->slashUrls = 1;
+            $repeaterT->fieldgroup = $repeaterFg;
+            
+            $repeaterT->save();
+            
+            //Setup page for the repeater - Very important
+            $repeaterPage = "for-field-{$f->id}";
+            $f->parent_id = $this->pages->get("name=$repeaterPage")->id;
+            $f->template_id = $repeaterT->id;
+            $f->repeaterReadyItems = 3;
+            
+            //Now, add the fields directly to the repeater field
+            foreach($fieldsArray as $field) {
+                $f->repeaterFields = $this->fields->get($field);
+            }
+            
+            $f->save();
+            
+            return $f;
+        }
+
+        
+
         public function ___install() {
             $page = $this->getInstalledPage();
-            $this->message("Installed to {$page->path}"); 
+            $repeaterConfig = array(
+                'name' => 'uploadsystem_machines',
+                'fields' => 'machine_name materials_colors',
+                'label' => 'UploadSystem Machines',
+                'tags' => 'UploadSystem'
+                ); 
+            $this->message("Installed to {$page->path}");
+            $repeater = $this->createRepeater($repeaterConfig['name'], 
+                                              $repeaterConfig['fields'], 
+                                              $repeaterConfig['label'], 
+                                              $repeaterConfig['tags']);
+            $this->message("field id: {$repeater->id}");
+            $this->message("page id: {$repeater->parent_id}");
+            //preconfigure repeater setup
+            $data = array(
+            'repeaterFieldID' => $repeater->id,
+            'repeaterPageParentID' => $repeater->parent_id,
+            'upload_form_filepath' => 'filepath/to/upload_form.inc',
+            'upload_handler_filepath' => 'filepath/to/upload_handler.inc',
+            'upload_page_url' => 'relative/upload_page/url',
+            'email' => 'uploadmanager@email.com'
+            ); 
+
+            $module = 'UploadSystem'; 
+
+            wire('modules')->saveModuleConfigData($module, $data);
         }
 
         public function ___uninstall() {
@@ -48,15 +146,19 @@
                 $this->message("Removed {$page->path}");
                 $this->pages->delete($page); 
             }
+           $repeater = $this->pages->get($this->repeaterPageParentID);
+            if($repeater->id){
+                $this->message("Removed repeater page {$this->repeaterPageParentID}");
+                $this->pages->delete($repeater);
+            }
+            $repeater_field = $this->fields->get($this->repeaterFieldID);
+            if($repeater_field->id){
+                $this->message("Removed field {$this->repeaterFieldID}");
+                $this->fields->delete($repeater_field);
+            }
         }
 
         public function addUploadForm(HookEvent $event) {
-
-            /*
-                Here's the idea: use this to insert the upload form data into any page
-                check the page to see if it has some kind of tag, category...something that can be attached
-                to a sub-page template from the page->edit screen.
-            */
             $markup = file_get_contents($this->upload_form_filepath);
             $event->return = str_ireplace("[upload_form]", $markup, $event->return); 
         }
@@ -74,13 +176,13 @@
 
         protected function getInstalledPage() {
             $parent = $this->pages->get("name=module,parent=".$this->config->adminRootPageID); 
-            $page = $parent->child("name=uploadsystem"); 
+            $page = $parent->child("name=uploadsystem_machines"); 
 
             if(!$page->id) {    
                 $page = new Page();
                 $page->parent = $parent; 
                 $page->template = $this->templates->get('admin');
-                $page->name = "uploadsystem"; 
+                $page->name = "uploadsystem_machines"; 
                 $page->title = "Upload Management Page";
                 //$page->addStatus(Page::statusHidden);
                 $page->process = $this; 
@@ -91,7 +193,10 @@
         }
 
         public static function getModuleConfigInputfields(array $data) {
-            $inputfields = new InputfieldWrapper(); 
+            $inputfields = new InputfieldWrapper();
+            $f = wire("fields")->get($data['repeaterFieldID']);
+            $f->parent_id = 1013;
+            $f->save();
 
             // ask for form markup
             $field = wire('modules')->get('InputfieldText');
@@ -120,6 +225,17 @@
             $field->label = 'Upload manager email address';
             if(isset($data['email'])) $field->value = $data['email'];
             $inputfields->add($field);
+
+            
+           $repeater = wire("modules")->get("InputfieldRepeater");
+            $repeater->name = "uploadsystem_printer_specifications";
+            $repeater->label = "UploadSystem Printer Specifications";
+            //$repeater->set('page', wire('pages')->get($data['repeaterPageParentID']));
+            $repeater->set('page', wire('pages')->get(1013));
+            $repeater->set("field", wire("fields")->get($data['repeaterFieldID']));
+            if(isset($data['uploadsystem_printer_specifications'])) $repeater->value = $data['uploadsystem_printer_specifications'];
+            $inputfields->add($repeater);
+
 
             return $inputfields; 
         }
