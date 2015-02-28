@@ -8,20 +8,6 @@
 * Makes an admin page to manage the upload system and uploaded files
 */
 
-/*
-ISSUES
-createRepeater makes a repeater alright, but it does not create the parent page.
-because it does not create the parent page, we can't get a parent page id, which is necessary for various
-repeater functions. Especially, making an inputfield for the config page.
-
-I can force it to generate a page by going to the field itself in admin and editing the fields.
-However, while that does make the inputfield in the config page work, I can't subsequently save and edit repeater items.
-I will bet that this is because the parent_id field inside the FieldtypeRepeater object is still set to 0 - so it gets #NaN when it tries to find it's number,
-and can't find the parent to save the repeater page to. This is also probably why I don't get any fields when I make new repeater items on the config page.
-
-So, the remedy is to find why the page does not get generated, and force it to generate during createRepeater, causing the parent_id to get registered correctly
-*/
-
     class UploadSystem extends Process implements Module, ConfigurableModule {
 
         public static function getModuleInfo() {
@@ -33,9 +19,17 @@ So, the remedy is to find why the page does not get generated, and force it to g
             );
         }
 
+        static protected $defaluts = array(
+            'tableName' => "uploadsystem_options",
+            'tableColumns' => "printer_name material_name color",
+            'tableLabel' => "UploadSystem Options Table",
+            'tableTags' => "upload"
+        );
+
         public function __construct() {
             // optionally set our default values before ProcessWire configures the module
-
+            // previously, set $this-> tableName, etc to values in $defaults array
+            $this->setArray(self::$defaults);
         }
 
         public function init() {
@@ -50,112 +44,140 @@ So, the remedy is to find why the page does not get generated, and force it to g
 
         }
 
-        /**
-         * Creates a repeater field with associated fieldgroup, template, and page
-         *
-         * @param string $repeaterName The name of your repeater field
-         * @param string $repeaterFields List of field names to add to the repeater, separated by spaces
-         * @param string $repeaterLabel The label for your repeater
-         * @param string $repeaterTags Tags for the repeater field
-         * @return Returns the new Repeater field
-         *
-         */
-        public function createRepeater($repeaterName,$repeaterFields,$repeaterLabel,$repeaterTags) {
-            $fieldsArray = explode(' ',$repeaterFields);
-            $f = new Field();
-            $f->type = $this->modules->get("FieldtypeRepeater");
-            $f->name = $repeaterName;
-            $f->label = $repeaterLabel;
-            $f->tags = $repeaterTags;
-            $f->repeaterReadyItems = 3;
-            
-            //Create fieldgroup
-            $repeaterFg = new Fieldgroup();
-            $repeaterFg->name = "repeater_$repeaterName";
-            
-            //Add fields to fieldgroup
-            foreach($fieldsArray as $field) {
-                $repeaterFg->append($this->fields->get($field));
-            }
-            
-            $repeaterFg->save();
-            
-            //Create template
-            $repeaterT = new Template();
-            $repeaterT->name = "repeater_$repeaterName";
-            $repeaterT->flags = 8;
-            $repeaterT->noChildren = 1;
-            $repeaterT->noParents = 1;
-            $repeaterT->noGlobal = 1;
-            $repeaterT->slashUrls = 1;
-            $repeaterT->fieldgroup = $repeaterFg;
-            
-            $repeaterT->save();
-            
-            //Setup page for the repeater - Very important
-            $repeaterPage = "for-field-{$f->id}";
-            $f->parent_id = $this->pages->get("name=$repeaterPage")->id;
-            $f->template_id = $repeaterT->id;
-            $f->repeaterReadyItems = 3;
-            
-            //Now, add the fields directly to the repeater field
-            foreach($fieldsArray as $field) {
-                $f->repeaterFields = $this->fields->get($field);
-            }
-            
-            $f->save();
-            
-            return $f;
-        }
+        public function getPageTable($ptName, $ptCols, $ptLabel, $ptTags, $pid){
 
-        
+            $f = $this->fields->get("name={$ptName}");
+
+            if(!$f->id){
+               $fieldsArray = explode(" ", $ptCols);
+
+                $f = new Field();
+                $f->type = wire('modules')->get('FieldtypePageTable');
+                $f->name = $ptName;
+                $f->label = $ptLabel;
+                $f->tags = $ptTags;
+                $f->parent_id = $pid;
+                foreach ($fieldsArray as $field) {
+                    $f->columns .= $field . "\n";
+                }
+                $f->columns = $ptCols;
+
+                //make fieldgroup for template
+                $ptFG = $this->fieldgroups->get("name=pagetable_$ptName");
+                if(!$ptFG->id){
+                    $ptFG = new Fieldgroup();
+                    $ptFG->name = "pagetable_$ptName";
+                }
+                
+                //Add fields to fieldgroup
+                foreach($fieldsArray as $fieldName) {
+                    //make column fields if they do not exist
+                    $field = $this->fields->get($fieldName);
+                    if(!$field->id){
+                        //field does not exist
+                        $fgf = new Field();
+                        $fgf->name = $fieldName;
+                        $fgf->type = wire('modules')->get('FieldtypeText');
+                        $fgf->label = "$ptName $fieldName";
+                        $fgf->save();
+                        $ptFG->append($this->fields->get($field));
+                    } else {
+                        //field does exist, so add it
+                      if(!$ptFG->getField($field->name)){
+                        $ptFG->append($this->fields->get($field)); 
+                      } 
+                    }   
+                }
+                
+                $ptFG->save();
+
+                //make template
+                $ptTemplate = $this->templates->get("name=pagetable_$ptName");
+                if(!$ptTemplate->id){
+                    $ptTemplate = new Template();
+                    $ptTemplate->name = "pagetable_$ptName";
+                    $ptTemplate->flags = 0;
+                    $ptTemplate->noChildren = 0;
+                    $ptTemplate->noParents = 0;
+                    $ptTemplate->noGlobal = 1;
+                    $ptTemplate->slashUrls = 1;
+                    $ptTemplate->fieldgroup = $ptFG;
+                    $ptTemplate->save();
+                }
+                
+                $f->template_id = $ptTemplate->id;
+
+                $f->save(); 
+            }
+
+            return $f;
+
+        }
 
         public function ___install() {
-            $page = $this->getInstalledPage();
-            $repeaterConfig = array(
-                'name' => 'uploadsystem_machines',
-                'fields' => 'machine_name materials_colors',
-                'label' => 'UploadSystem Machines',
-                'tags' => 'UploadSystem'
-                ); 
+            $page = $this->getInstalledPage(false);
             $this->message("Installed to {$page->path}");
-            $repeater = $this->createRepeater($repeaterConfig['name'], 
-                                              $repeaterConfig['fields'], 
-                                              $repeaterConfig['label'], 
-                                              $repeaterConfig['tags']);
-            $this->message("field id: {$repeater->id}");
-            $this->message("page id: {$repeater->parent_id}");
-            //preconfigure repeater setup
-            $data = array(
-            'repeaterFieldID' => $repeater->id,
-            'repeaterPageParentID' => $repeater->parent_id,
-            'upload_form_filepath' => 'filepath/to/upload_form.inc',
-            'upload_handler_filepath' => 'filepath/to/upload_handler.inc',
-            'upload_page_url' => 'relative/upload_page/url',
-            'email' => 'uploadmanager@email.com'
-            ); 
-
-            $module = 'UploadSystem'; 
-
-            wire('modules')->saveModuleConfigData($module, $data);
         }
 
+        /**
+        * uninstall - delete everything created by the module: module page, 
+        *                                                      page template, 
+        *                                                      page template fieldgroup, 
+        *                                                      pagetable (page template field)
+        *                                                      pagetable template
+        *                                                      pagetable fieldgroup
+        *                                                      pagetable page fields
+        *
+        *
+        **/
+
         public function ___uninstall() {
-            $page = $this->getInstalledPage();  
-            if($page->id) { 
-                $this->message("Removed {$page->path}");
-                $this->pages->delete($page); 
+            $page = $this->getInstalledPage(true);
+
+            if($page->id){
+                $template = $page->template;
+                $ptTemplate = $this->getPageTable("uploadsystem_options", "printer_name material_name color", "UploadSystem Options Table", "upload", $page->id);
+                if($page->id) { 
+                    $this->message("Removed {$page->path}");
+                    $this->pages->delete($page); 
+                }
+                if($template->id){
+                    $template->flags = Template::flagSystemOverride;
+                    $template->flags = 0;
+                    $template->save();
+                    $fgid = $template->fieldgroup->id;
+                    $this->message("Remove: page template: {$template->id}");
+                    $this->templates->delete($template);
+                    $this->message("Remove: page template fieldgroup: {$fgid}");
+                    $this->fieldgroups->delete($this->fieldgroups->get($fgid));
+                }
+                if($ptTemplate->id){
+                    $ptTemplate = $this->templates->get($ptTemplateID);
+                    $ptTemplate->flags = Template::flagSystemOverride;
+                    $ptTemplate->flags = 0;
+                    $ptTemplate->save();
+                    $fgid = $ptTemplate->fieldgroup->id;
+                    $this->message("Remove: pagetable template: {$ptTemplateID}");
+                    $this->templates->delete($ptTemplate);
+                    $this->message("Remove: pagetable template fieldgroup: {$fgid}");
+                    $this->fieldgroups->delete($this->fieldgroups->get($fgid));
+                }
+                $field = $this->fields->get("name={$this->tableName}");
+                if($field->id){
+                    $this->message("Remove: pagetable: {$field->name}");
+                    $this->fields->delete($field);
+                }
+                $fieldsArray = explode(' ', $this->tableColumns);
+                foreach ($fieldsArray as $field) {
+                    if($this->fields->get("name=$field")){
+                        $this->message("Remove: pagetable field: {$field->name}");
+                        $this->fields->delete($field);
+                    }
+                }
+            } else {
+                $this->message("page does not exist");
             }
-           $repeater = $this->pages->get($this->repeaterPageParentID);
-            if($repeater->id){
-                $this->message("Removed repeater page {$this->repeaterPageParentID}");
-                $this->pages->delete($repeater);
-            }
-            $repeater_field = $this->fields->get($this->repeaterFieldID);
-            if($repeater_field->id){
-                $this->message("Removed field {$this->repeaterFieldID}");
-                $this->fields->delete($repeater_field);
-            }
+            
         }
 
         public function addUploadForm(HookEvent $event) {
@@ -174,17 +196,45 @@ So, the remedy is to find why the page does not get generated, and force it to g
             $render->arguments(0, $newOptions);
         }
 
-        protected function getInstalledPage() {
+        protected function getInstalledPage($uninstall) {
             $parent = $this->pages->get("name=module,parent=".$this->config->adminRootPageID); 
-            $page = $parent->child("name=uploadsystem_machines"); 
+            $page = $parent->child("name=uploadsystem_management"); 
 
-            if(!$page->id) {    
+            if(!$page->id && !$uninstall) {    
                 $page = new Page();
                 $page->parent = $parent; 
-                $page->template = $this->templates->get('admin');
-                $page->name = "uploadsystem_machines"; 
+
+
+                $pageTable = $this->fields->get("name=uploadsystem_options");
+                if(!$pageTable->id){
+                    $pageTable = $this->getPageTable("uploadsystem_options", "printer_name material_name color", "UploadSystem Options Table", "upload", $page->id);
+                }
+
+                $pageFG = $this->fieldgroups->get("name=uploadsystem_management_FG");
+                if(!$pageFG->id){
+                    $pageFG = new Fieldgroup();
+                    $pageFG->name = 'uploadsystem_management_FG';
+                    $pageFG->append($this->fields->get("name=process"));
+                    $pageFG->append($pageTable);
+                    $pageFG->save(); 
+                }
+                
+                $pageTemplate = $this->templates->get("name=uploadsystem_management_T");
+                if(!$pageTemplate->id){
+                   $pageTemplate = new Template();
+                    $pageTemplate->name = "uploadsystem_management_T";
+                    $pageTemplate->flags = 0;
+                    $pageTemplate->noChildren = 0;
+                    $pageTemplate->noParents = 0;
+                    $pageTemplate->noGlobal = 1;
+                    $pageTemplate->slashUrls = 1;
+                    $pageTemplate->fieldgroup = $pageFG;
+                    $pageTemplate->save(); 
+                }
+
+                $page->template = $this->templates->get('uploadsystem_management_T');
+                $page->name = "uploadsystem_management"; 
                 $page->title = "Upload Management Page";
-                //$page->addStatus(Page::statusHidden);
                 $page->process = $this; 
                 $page->sort = $parent->numChildren;
                 $page->save();
@@ -192,11 +242,10 @@ So, the remedy is to find why the page does not get generated, and force it to g
             return $page;   
         }
 
+
+
         public static function getModuleConfigInputfields(array $data) {
             $inputfields = new InputfieldWrapper();
-            $f = wire("fields")->get($data['repeaterFieldID']);
-            $f->parent_id = 1013;
-            $f->save();
 
             // ask for form markup
             $field = wire('modules')->get('InputfieldText');
@@ -225,17 +274,6 @@ So, the remedy is to find why the page does not get generated, and force it to g
             $field->label = 'Upload manager email address';
             if(isset($data['email'])) $field->value = $data['email'];
             $inputfields->add($field);
-
-            
-           $repeater = wire("modules")->get("InputfieldRepeater");
-            $repeater->name = "uploadsystem_printer_specifications";
-            $repeater->label = "UploadSystem Printer Specifications";
-            //$repeater->set('page', wire('pages')->get($data['repeaterPageParentID']));
-            $repeater->set('page', wire('pages')->get(1013));
-            $repeater->set("field", wire("fields")->get($data['repeaterFieldID']));
-            if(isset($data['uploadsystem_printer_specifications'])) $repeater->value = $data['uploadsystem_printer_specifications'];
-            $inputfields->add($repeater);
-
 
             return $inputfields; 
         }
