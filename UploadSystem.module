@@ -14,22 +14,22 @@
             return array(
                 'title' => 'A² Fab Lab Upload System',
                 'summary' => 'Makes an admin page to manage the upload system and uploaded files.',
-                'version' => 1,
+                'version' => 2,
                 'autoload' => true 
             );
-        }
-
-        static protected $defaluts = array(
-            'tableName' => "uploadsystem_options",
-            'tableColumns' => "printer_name material_name color",
-            'tableLabel' => "UploadSystem Options Table",
-            'tableTags' => "upload"
-        );
+        } 
 
         public function __construct() {
             // optionally set our default values before ProcessWire configures the module
             // previously, set $this-> tableName, etc to values in $defaults array
-            $this->setArray(self::$defaults);
+            $this->defaults = array(
+                "tableName" => "uploadsystem_options",
+                "tableColumns" => "printer_name material_name color",
+                "tableLabel" => "UploadSystem Options Table",
+                "tableTags" => "upload",
+                "pageName" => "uploadsystem_management",
+                "pageTitle" => "Upload System Management Page"
+            );   
         }
 
         public function init() {
@@ -60,13 +60,13 @@
                 foreach ($fieldsArray as $field) {
                     $f->columns .= $field . "\n";
                 }
-                $f->columns = $ptCols;
 
                 //make fieldgroup for template
                 $ptFG = $this->fieldgroups->get("name=pagetable_$ptName");
                 if(!$ptFG->id){
                     $ptFG = new Fieldgroup();
                     $ptFG->name = "pagetable_$ptName";
+                    $ptFG->append($this->fields->get("name=title"));
                 }
                 
                 //Add fields to fieldgroup
@@ -75,16 +75,16 @@
                     $field = $this->fields->get($fieldName);
                     if(!$field->id){
                         //field does not exist
-                        $fgf = new Field();
-                        $fgf->name = $fieldName;
-                        $fgf->type = wire('modules')->get('FieldtypeText');
-                        $fgf->label = "$ptName $fieldName";
-                        $fgf->save();
-                        $ptFG->append($this->fields->get($field));
+                        $field = new Field();
+                        $field->name = $fieldName;
+                        $field->type = wire('modules')->get('FieldtypeText');
+                        $field->label = "$ptName $fieldName";
+                        $field->save();
+                        $ptFG->append($field);
                     } else {
                         //field does exist, so add it
                       if(!$ptFG->getField($field->name)){
-                        $ptFG->append($this->fields->get($field)); 
+                        $ptFG->append($field); 
                       } 
                     }   
                 }
@@ -115,6 +115,14 @@
         }
 
         public function ___install() {
+           $this->defaults = array(
+                "tableName" => "uploadsystem_options",
+                "tableColumns" => "printer_name material_name color",
+                "tableLabel" => "UploadSystem Options Table",
+                "tableTags" => "upload",
+                "pageName" => "uploadsystem_management",
+                "pageTitle" => "Upload System Management Page"
+            );
             $page = $this->getInstalledPage(false);
             $this->message("Installed to {$page->path}");
         }
@@ -134,50 +142,65 @@
         public function ___uninstall() {
             $page = $this->getInstalledPage(true);
 
-            if($page->id){
-                $template = $page->template;
-                $ptTemplate = $this->getPageTable("uploadsystem_options", "printer_name material_name color", "UploadSystem Options Table", "upload", $page->id);
-                if($page->id) { 
-                    $this->message("Removed {$page->path}");
-                    $this->pages->delete($page); 
-                }
-                if($template->id){
-                    $template->flags = Template::flagSystemOverride;
-                    $template->flags = 0;
-                    $template->save();
-                    $fgid = $template->fieldgroup->id;
-                    $this->message("Remove: page template: {$template->id}");
-                    $this->templates->delete($template);
-                    $this->message("Remove: page template fieldgroup: {$fgid}");
-                    $this->fieldgroups->delete($this->fieldgroups->get($fgid));
-                }
-                if($ptTemplate->id){
-                    $ptTemplate = $this->templates->get($ptTemplateID);
-                    $ptTemplate->flags = Template::flagSystemOverride;
-                    $ptTemplate->flags = 0;
-                    $ptTemplate->save();
-                    $fgid = $ptTemplate->fieldgroup->id;
-                    $this->message("Remove: pagetable template: {$ptTemplateID}");
-                    $this->templates->delete($ptTemplate);
-                    $this->message("Remove: pagetable template fieldgroup: {$fgid}");
-                    $this->fieldgroups->delete($this->fieldgroups->get($fgid));
-                }
-                $field = $this->fields->get("name={$this->tableName}");
-                if($field->id){
-                    $this->message("Remove: pagetable: {$field->name}");
-                    $this->fields->delete($field);
-                }
-                $fieldsArray = explode(' ', $this->tableColumns);
-                foreach ($fieldsArray as $field) {
-                    if($this->fields->get("name=$field")){
-                        $this->message("Remove: pagetable field: {$field->name}");
-                        $this->fields->delete($field);
+            $template = $page->template;
+            $pt = $this->getPageTable($this->defaults['tableName'], $this->defaults['tableColumns'], $this->defualts['tableLabel'], $this->defaults['tableTags'], $page->id);
+            $ptTemplate = $this->templates->get($pt->template_id);
+
+            //REMOVE PAGE AND CHILDREN
+            if($page->id) {
+                if(count($page->children)){
+                    foreach ($page->children as $child) {
+                        $this->message("Removed page table entry {$child->path}");
+                        $this->pages->delete($child); 
                     }
-                }
-            } else {
-                $this->message("page does not exist");
+                } 
+                $this->message("Removed {$page->path}");
+                $this->pages->delete($page, true); 
             }
-            
+            //REMOVE PAGE TEMPLATE AND FIELDGROUP
+            if($template->id){
+                $template->flags = Template::flagSystemOverride;
+                $template->flags = 0;
+                $template->save();
+                $fgname = $template->fieldgroup->name;
+                if ($template->getNumPages() > 0) {
+                    throw new WireException("Can't uninstall because template is used by some pages.");
+                } else {
+                    $this->message("Remove: page template: {$template->name}");
+                    $this->templates->delete($template);
+                    $this->message("Remove: page template fieldgroup: {$fgname}");
+                    $this->fieldgroups->delete($this->fieldgroups->get("name=$fgname"));
+                }
+            }
+            //REMOVE CHILD TEMPLATE (PAGE TABLE ENTRY TEMPLATE AND FIELDGROUP)
+            if($ptTemplate->id){
+                $ptTemplate->flags = Template::flagSystemOverride;
+                $ptTemplate->flags = 0;
+                $ptTemplate->save();
+                if($ptTemplate->getNumPages() > 0){
+                    throw new WireException("Can't uninstall because template is used by some pages.");
+                } else {
+                    $fgname = $ptTemplate->fieldgroup->name;
+                    $this->message("Remove: pagetable template: {$ptTemplate->name}");
+                    $this->templates->delete($ptTemplate);
+                    $this->message("Remove: pagetable template fieldgroup: {$fgname}");
+                    $this->fieldgroups->delete($this->fieldgroups->get($fgname));
+                }
+            }
+            //REMOVE PAGETABLE FIELD
+            $field = $this->fields->get("name={$this->defaults['tableName']}");
+            if($field->id){
+                $this->message("Remove: pagetable: {$field->name}");
+                $this->fields->delete($field);
+            }
+            //REMOVE PAGETABLE ENTRY FIELDS
+            $fieldsArray = explode(' ', $this->defaults['tableColumns']);
+            foreach ($fieldsArray as $field) {
+                if($this->fields->get("name=$field")){
+                    $this->message("Remove: pagetable field: {$field->name}");
+                    $this->fields->delete($this->fields->get($field));
+                }
+            }
         }
 
         public function addUploadForm(HookEvent $event) {
@@ -198,31 +221,32 @@
 
         protected function getInstalledPage($uninstall) {
             $parent = $this->pages->get("name=module,parent=".$this->config->adminRootPageID); 
-            $page = $parent->child("name=uploadsystem_management"); 
+            $page = $parent->child("name={$this->defaults['pageName']}"); 
 
             if(!$page->id && !$uninstall) {    
                 $page = new Page();
                 $page->parent = $parent; 
 
 
-                $pageTable = $this->fields->get("name=uploadsystem_options");
+                $pageTable = $this->fields->get("name={$this->defaults['tableName']}");
                 if(!$pageTable->id){
-                    $pageTable = $this->getPageTable("uploadsystem_options", "printer_name material_name color", "UploadSystem Options Table", "upload", $page->id);
+                    $pageTable = $this->getPageTable($this->defaults['tableName'], $this->defaults['tableColumns'], $this->defaults['tableLabel'], $this->defaults['tableTags'], $page->id);
                 }
 
-                $pageFG = $this->fieldgroups->get("name=uploadsystem_management_FG");
+                $pageFG = $this->fieldgroups->get("name={$this->defaults['pageName']}_FG");
                 if(!$pageFG->id){
                     $pageFG = new Fieldgroup();
-                    $pageFG->name = 'uploadsystem_management_FG';
+                    $pageFG->name = "{$this->defaults['pageName']}_FG";
+                    $pageFG->append($this->fields->get("name=title"));
                     $pageFG->append($this->fields->get("name=process"));
                     $pageFG->append($pageTable);
                     $pageFG->save(); 
                 }
                 
-                $pageTemplate = $this->templates->get("name=uploadsystem_management_T");
+                $pageTemplate = $this->templates->get("name={$this->defaults['pageName']}_T");
                 if(!$pageTemplate->id){
                    $pageTemplate = new Template();
-                    $pageTemplate->name = "uploadsystem_management_T";
+                    $pageTemplate->name = "{$this->defaults['pageName']}_T";
                     $pageTemplate->flags = 0;
                     $pageTemplate->noChildren = 0;
                     $pageTemplate->noParents = 0;
@@ -232,9 +256,9 @@
                     $pageTemplate->save(); 
                 }
 
-                $page->template = $this->templates->get('uploadsystem_management_T');
-                $page->name = "uploadsystem_management"; 
-                $page->title = "Upload Management Page";
+                $page->template = $pageTemplate;
+                $page->name = $this->defaults['pageName']; 
+                $page->title = $this->defaults['pageTitle'];
                 $page->process = $this; 
                 $page->sort = $parent->numChildren;
                 $page->save();
