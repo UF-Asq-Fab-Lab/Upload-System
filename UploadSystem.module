@@ -24,7 +24,7 @@
             // previously, set $this-> tableName, etc to values in $defaults array
             $this->defaults = array(
                 "tableName" => "uploadsystem_options",
-                "tableColumns" => "printer_name material_name color",
+                "tableColumns" => "materialAndColor_Textarea online_Checkbox",
                 "tableLabel" => "UploadSystem Options Table",
                 "tableTags" => "upload",
                 "pageName" => "uploadsystem_management",
@@ -57,9 +57,11 @@
                 $f->label = $ptLabel;
                 $f->tags = $ptTags;
                 $f->parent_id = $pid;
+                $f->columns = "title\n";
                 foreach ($fieldsArray as $field) {
                     $f->columns .= $field . "\n";
                 }
+                $f->columns = substr($f->columns, 0, -1);
 
                 //make fieldgroup for template
                 $ptFG = $this->fieldgroups->get("name=pagetable_$ptName");
@@ -77,7 +79,9 @@
                         //field does not exist
                         $field = new Field();
                         $field->name = $fieldName;
-                        $field->type = wire('modules')->get('FieldtypeText');
+                        $divPosition = strpos($fieldName, "_") + 1;
+                        $this->message("Fieldtype".substr($fieldName, $divPosition));
+                        $field->type = wire('modules')->get("Fieldtype".substr($fieldName, $divPosition));
                         $field->label = "$ptName $fieldName";
                         $field->save();
                         $ptFG->append($field);
@@ -117,12 +121,12 @@
         public function ___install() {
            $this->defaults = array(
                 "tableName" => "uploadsystem_options",
-                "tableColumns" => "printer_name material_name color",
+                "tableColumns" => "materialAndColor_Textarea available_Checkbox",
                 "tableLabel" => "UploadSystem Options Table",
                 "tableTags" => "upload",
                 "pageName" => "uploadsystem_management",
                 "pageTitle" => "Upload System Management Page"
-            );
+            ); 
             $page = $this->getInstalledPage(false);
             $this->message("Installed to {$page->path}");
         }
@@ -144,8 +148,12 @@
 
             $template = $page->template;
             $pt = $this->getPageTable($this->defaults['tableName'], $this->defaults['tableColumns'], $this->defualts['tableLabel'], $this->defaults['tableTags'], $page->id);
-            $ptTemplate = $this->templates->get($pt->template_id);
-
+            if(is_array($pt->template_id)){
+               $ptTemplate = $this->templates->get($pt->template_id[0]); 
+            } else {
+               $ptTemplate = $this->templates->get($pt->template_id);
+            }
+            
             //REMOVE PAGE AND CHILDREN
             if($page->id) {
                 if(count($page->children)){
@@ -157,6 +165,7 @@
                 $this->message("Removed {$page->path}");
                 $this->pages->delete($page, true); 
             }
+
             //REMOVE PAGE TEMPLATE AND FIELDGROUP
             if($template->id){
                 $template->flags = Template::flagSystemOverride;
@@ -172,6 +181,7 @@
                     $this->fieldgroups->delete($this->fieldgroups->get("name=$fgname"));
                 }
             }
+
             //REMOVE CHILD TEMPLATE (PAGE TABLE ENTRY TEMPLATE AND FIELDGROUP)
             if($ptTemplate->id){
                 $ptTemplate->flags = Template::flagSystemOverride;
@@ -187,12 +197,14 @@
                     $this->fieldgroups->delete($this->fieldgroups->get($fgname));
                 }
             }
+
             //REMOVE PAGETABLE FIELD
             $field = $this->fields->get("name={$this->defaults['tableName']}");
             if($field->id){
                 $this->message("Remove: pagetable: {$field->name}");
                 $this->fields->delete($field);
             }
+
             //REMOVE PAGETABLE ENTRY FIELDS
             $fieldsArray = explode(' ', $this->defaults['tableColumns']);
             foreach ($fieldsArray as $field) {
@@ -201,10 +213,52 @@
                     $this->fields->delete($this->fields->get($field));
                 }
             }
+
+        }
+
+        public function makeJSONString(PageArray $ppages){
+            $jsonString = '[';
+                foreach ($ppages as $printer) {
+                    //build material => colors array
+                    $lines = explode("\n", $printer->materialAndColor_Textarea);
+                    $materials = array();
+                    foreach ($lines as $line) {
+                        //each line is a unique material-color combo
+                        $entry = explode(",", $line);
+                        if($entry[2]){ //if available
+                            if(array_key_exists($entry[0], $materials)){
+                                array_push($materials[$entry[0]], $entry[1]); //push color
+                            } else {
+                                $materials[$entry[0]] = array($entry[1]); //new entry, first color
+                            } 
+                        }
+                    }
+                    
+                    $jsonString .= '{"title" : ' . '"' . $printer->title . '", ';
+                    $jsonString .= '"materials" : [';
+                    foreach ($materials as $material => $colors) {
+                        $jsonString .= '{"name" : ' . '"' . $material . '", ';
+                        $jsonString .= '"colors" : [';
+                        foreach ($colors as $color) {
+                            $jsonString .= '"' . $color . '", ';
+                        }
+                        $jsonString = rtrim($jsonString, ", ");
+                        $jsonString .= ']}, ';
+                    }
+                    $jsonString = rtrim($jsonString, ", ");
+                    $jsonString .= ']}, ';
+                }
+            $jsonString = rtrim($jsonString, ", ");
+            $jsonString .= ']';
+            return $jsonString;
         }
 
         public function addUploadForm(HookEvent $event) {
             $markup = file_get_contents($this->upload_form_filepath);
+            $js = file_get_contents($this->upload_form_js_filepath);
+            $printerPages = $this->pages->get("name={$this->pageName}")->children("available_Checkbox=1");
+            $json = makeJSONString($printerPages);
+            $markup .= $js . $json;
             $event->return = str_ireplace("[upload_form]", $markup, $event->return); 
         }
 
