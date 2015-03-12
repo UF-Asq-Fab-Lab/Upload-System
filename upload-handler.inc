@@ -55,7 +55,7 @@
 	    	$title .= $timestamp;
 	        // create the new page to add the file
 	        $uploadpage = new Page();
-	        $uploadpage->template = "file";
+	        $uploadpage->template = "uploadsystem_file";
 	        $uploadpage->title = $title;
 	        $uploadpage->name = $title;
 	        $uploadpage->ufid = $user->ufid;
@@ -64,9 +64,9 @@
 	        $title = $sanitizer->pageName($title);
 	        $uploadpage->set('Print_Confirmation_URL', $page->Confirmation_URL . $title . "?confirm=1");
 	        $uploadpage->set('timestamp', $timestamp);
-	        $uploadpage->parent = $pages->get("/uploads/");
+	        $uploadpage->parent = $pages->get($modules->get("UploadSystem")->data['page_id']);
 	        $bodystring = "";
-	        $bodystring .= "Machine: " . $input->post->machine . "<br>";
+	        $bodystring .= "Machine: " . $input->post->printer . "<br>";
 	        $bodystring .= "Material: " . $input->post->material . "<br>";
 	        $bodystring .= "Color: " . $input->post->color . "<br>";
 	        $bodystring .= "Comments: " . $comments . "<br>";
@@ -112,63 +112,3 @@
  
  
 ?>
-
-
-
-<div id="machinesjson" style="visibility: hidden">
-	<?php
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		//generate embedded JSON data from root directory specified on admin page
-		//Page hierarchy example:
-		//root page
-		// ->machine page
-		//		->materialpage
-		//			->color
-		//			->color
-		//		->materialpage
-		//			->color
-		//		->materialpage
-		//			->color
-		//			->color
-		//		->materialpage
-		//			->color
-		//			->color
-		//			->color
-		// ->machine page
-		//		->materialpage
-		//			->color
-		//			->color
-		//		->materialpage
-		//			->color
-		//		->materialpage
-		//			->color
-		//			->color
-		//		->materialpage
-		//			->color
-		//			->color
-		//			->color
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		$jsonmachines = '[';
-			foreach ($machines as $machine) {
-				$jsonmachines .= '{"title" : ' . '"' . $machine->title . '", ';
-				$jsonmachines .= '"materials" : [';
-				foreach ($machine->children("include=hidden") as $material) {
-					$jsonmachines .= '{"name" : ' . '"' . $material->title . '", ';
-					$jsonmachines .= '"colors" : ';
-					$jsonmachines .= '[';
-					foreach ($material->colors as $color){
-						if($color->available){
-							$jsonmachines .= '"' . $color->text . '", ';
-						}
-					}
-					$jsonmachines = rtrim($jsonmachines, ", ");
-					$jsonmachines .= ']}, ';
-				}
-				$jsonmachines = rtrim($jsonmachines, ", ");
-				$jsonmachines .= ']}, ';
-			}
-		$jsonmachines = rtrim($jsonmachines, ", ");
-		$jsonmachines .= ']';
-		echo $jsonmachines;
-	?>
-</div>

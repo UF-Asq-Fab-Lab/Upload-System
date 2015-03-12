@@ -4,18 +4,20 @@
 	<p><input type="checkbox" required/> Is your model <a href="/faq/3d-printing-faq/">water-tight?</a><br></p>
 	<p><input type="checkbox" required/> Is your model <a href="/faq/3d-printing-faq/">scaled</a> to the correct size?<br></p>
 	<p><input type="checkbox" required/> Does the file contain only solid 3D geometry? <a href="/faq/3d-printing-faq/">(no curves or open surfaces)</a><br></p>
-	<p><label for="machine">3D Printer</label></p>
-	<p><select name="machine" id="machinesdropdown">
-		<option selected="selected">Choose a Machine</option>
+	<p><label for="printer">3D Printer</label></p>
+	<p><select name="printer" id="printersdropdown">
+		<option selected="selected">Choose a Printer</option>
 		
 	</select></p>
 	<p><label for="material">Material</label></p>
 	<p><select name="material" id="materialsdropdown">
-	<option selected="selected">Choose a Material</option>
+		<option selected="selected">Choose a Material</option>
+
 	</select></p>
 	<p><label for="material">Color</label></p>
 	<p><select name="color" id="colorsdropdown">
-	<option selected="selected">Choose a Color</option>
+		<option selected="selected">Choose a Color</option>
+
 	</select></p>
 	<p><label for="units">Units</label></p>
 		<p><select name="units" id="units">
