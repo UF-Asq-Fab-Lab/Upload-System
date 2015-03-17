@@ -118,25 +118,23 @@
             $defaults = self::getDefaultConfig();
             $data = wire('modules')->getModuleConfigData($this->className());
             $data = array_merge($defaults, $data);
-            $page = $this->getInstalledPage(true, $data);
-            $uploadsPage = $this->getUploadsPage($page, $data);
-            $template = $page->template;
-            $uploadsTemplate = $uploadsPage->template;
-            $pt = $this->getPageTable($data['tableName'], 
-                                      $data['tableColumns'], 
-                                      $data['tableLabel'], 
-                                      $data['tableTags'], 
-                                      $page->id);
-           $uploadspt = $this->getPageTable($data['uploadsTableName'], 
-                                      $data['uploadsTableCols'], 
-                                      $data['uploadsTableLabel'], 
-                                      $data['uploadsTableTags'], 
-                                      $uploadsPage->id);
-           if(is_array($pt->template_id)){
-               $ptTemplate = $this->templates->get($pt->template_id[0]); 
-            } else {
-               $ptTemplate = $this->templates->get($pt->template_id);
-            }
+
+            $page = $this->pages->get("name={$data['pageName']}");
+            $pageTemplate = $this->templates->get("name={$data['pageName']}_T");
+            $pageFieldgroup = $this->fieldgroups->get("name={$data['pageName']}_FG");
+
+            $optionsTable = $this->fields->get("name={$data['tableName']}");
+            $optionsTableTemplate = $this->templates->get("name={$data['tableName']}_T");
+            $optionsTableFieldgroup = $this->fieldgroups->get("name={$data['tableName']}_FG");
+
+            $uploadsPage = $this->pages->get("name={$data['uploadsPageName']}");
+            $uploadsPageTemplate = $this->templates->get("name={$data['uploadsPageName']}_T");
+            $uploadsPageFieldgroup = $this->fieldgroups->get("name={$data['uploadsPageName']}_FG");
+
+            $uploadsTable = $this->fields->get("name={$data['uploadsTableName']}");
+            $uploadsTableTemplate = $this->templates->get("name={$data['uploadsTableName']}_T");
+            $uploadsTableFieldgroup = $this->fieldgroups->get("name={$data['uploadsTableName']}_FG");
+
             
             //REMOVE PAGE AND CHILDREN
             if($page->id) {
@@ -151,50 +149,56 @@
             }
 
             //REMOVE PAGE TEMPLATE AND FIELDGROUP
-            if($template->id){
-                $template->flags = Template::flagSystemOverride;
-                $template->flags = 0;
-                $template->save();
-                $fgname = $template->fieldgroup->name;
-                if ($template->getNumPages() > 0) {
+            if($pageTemplate->id){
+                $pageTemplate->flags = Template::flagSystemOverride;
+                $pageTemplate->flags = 0;
+                $pageTemplate->save();
+                if ($pageTemplate->getNumPages() > 0) {
                     throw new WireException("Can't uninstall because template is used by some pages.");
                 } else {
-                    $this->message("Remove: page template: {$template->name}");
-                    $this->templates->delete($template);
-                    $this->message("Remove: page template fieldgroup: {$fgname}");
-                    $this->fieldgroups->delete($this->fieldgroups->get("name=$fgname"));
+                    $this->message("Remove: page template: {$pageTemplate->name}");
+                    $this->templates->delete($pageTemplate);
                 }
+            }
+
+            if($pageFieldgroup->id){
+                $this->message("Remove: page template fieldgroup: {$pageFieldgroup->name}");
+                $this->fieldgroups->delete($pageFieldgroup);
             }
 
             //REMOVE CHILD TEMPLATE (PAGE TABLE ENTRY TEMPLATE AND FIELDGROUP)
-            if($ptTemplate->id){
-                $ptTemplate->flags = Template::flagSystemOverride;
-                $ptTemplate->flags = 0;
-                $ptTemplate->save();
-                if($ptTemplate->getNumPages() > 0){
+            if($optionsTableTemplate->id){
+                $optionsTableTemplate->flags = Template::flagSystemOverride;
+                $optionsTableTemplate->flags = 0;
+                $optionsTableTemplate->save();
+                if($optionsTableTemplate->getNumPages() > 0){
                     throw new WireException("Can't uninstall because template is used by some pages.");
                 } else {
-                    $fgname = $ptTemplate->fieldgroup->name;
-                    $this->message("Remove: pagetable template: {$ptTemplate->name}");
-                    $this->templates->delete($ptTemplate);
-                    $this->message("Remove: pagetable template fieldgroup: {$fgname}");
-                    $this->fieldgroups->delete($this->fieldgroups->get($fgname));
+                    $this->message("Remove: pagetable template: {$optionsTableTemplate->name}");
+                    $this->templates->delete($optionsTableTemplate);
                 }
             }
 
+            if($optionsTableFieldgroup->id){
+                $this->message("Remove: pagetable template fieldgroup: {$optionsTableFieldgroup->name}");
+                $this->fieldgroups->delete($optionsTableFieldgroup);  
+            }
+
             //REMOVE PAGETABLE FIELD
-            $field = $this->fields->get("name={$data['tableName']}");
-            if($field->id){
-                $this->message("Remove: pagetable: {$field->name}");
-                $this->fields->delete($field);
+            if($optionsTable->id){
+                $this->message("Remove: pagetable: {$optionsTable->name}");
+                $this->fields->delete($optionsTable);
             }
 
             //REMOVE PAGETABLE ENTRY FIELDS
             $fieldsArray = explode(' ', $data['tableColumns']);
             foreach ($fieldsArray as $field) {
-                if($this->fields->get("name=$field")){
-                    $this->message("Remove: pagetable field: {$field->name}");
-                    $this->fields->delete($this->fields->get($field));
+                 $fieldShortname = substr($field, 0, strpos($field, "_"));
+                if($this->fields->get("name=$fieldShortname")){
+                    if($this->fields->get("name=$fieldShortname")->numFieldgroups() == 0){
+                        $this->message("Remove: pagetable field: {$field->name}");
+                        $this->fields->delete($this->fields->get("name={$fieldShortname}"));
+                    }
                 }
             }
 
@@ -214,31 +218,55 @@
             }
 
             // remove uploads parent page and child templates, fieldgroups
-            if($uploadsTemplate->id){
-                $uploadsTemplate->flags = Template::flagSystemOverride;
-                $uploadsTemplate->flags = 0;
-                $uploadsTemplate->save();
-                if($uploadsTemplate->getNumPages() > 0){
+            if($uploadsPageTemplate->id){
+                $uploadsPageTemplate->flags = Template::flagSystemOverride;
+                $uploadsPageTemplate->flags = 0;
+                $uploadsPageTemplate->save();
+                if($uploadsPageTemplate->getNumPages() > 0){
                     throw new WireException("Can't uninstall because template is used by some pages.");
                 } else {
-                    $fgname = $uploadsTemplate->fieldgroup->name;
-                    $this->message("Remove: uploads table template: {$uploadsTemplate}");
-                    $this->templates->delete($uploadsTemplate);
-                    $this->message("Remove: uploads table fieldgroup: {$fgname}");
-                    $this->fieldgroups->delete($this->fieldgroups->get($fgname));
+                    $this->message("Remove: uploads table template: {$uploadsPageTemplate->name}");
+                    $this->templates->delete($uploadsPageTemplate);
                 }
             }
-            // remove uploads parent page and child fields
-            $field = $this->fields->get("name={$data['uploadsTableName']}");
-            if($field->id){
-                $this->message("Remove: uploads table: {$field->name}");
-                $this->fields->delete($field);
+
+            if($uploadsPageFieldgroup->id){
+                $this->message("Remove: uploads table fieldgroup: {$uploadsPageFieldgroup->name}");
+                $this->fieldgroups->delete($uploadsPageFieldgroup);
             }
+
+            if($uploadsTableTemplate->id){
+                $uploadsTableTemplate->flags = Template::flagSystemOverride;
+                $uploadsTableTemplate->flags = 0;
+                $uploadsTableTemplate->save();
+                if($uploadsTableTemplate->getNumPages() > 0){
+                    throw new WireException("Can't uninstall because template is used by some pages.");
+                } else {
+                    $this->message("Remove: pagetable template: {$uploadsTableTemplate->name}");
+                    $this->templates->delete($uploadsTableTemplate);
+                }
+            }
+
+            if($uploadsTableFieldgroup->id){
+                $this->message("Remove: pagetable template fieldgroup: {$uploadsTableFieldgroup->name}");
+                $this->fieldgroups->delete($uploadsTableFieldgroup);  
+            }
+
+            // remove uploads parent page and child fields
+            if($uploadsTable->id){
+                $this->message("Remove: uploads table: {$uploadsTable->name}");
+                $this->fields->delete($uploadsTable);
+            }
+
             $fieldsArray = explode(' ', $data['uploadsTableCols']);
             foreach ($fieldsArray as $field) {
-                if($this->fields->get("name=$field")){
-                    $this->message("Remove: uploads table field: {$field->name}");
-                    $this->fields->delete($this->fields->get($field));
+                 $fieldShortname = substr($field, 0, strpos($field, "_"));
+
+                if($this->fields->get("name=$fieldShortname")){
+                    if($this->fields->get("name=$fieldShortname")->numFieldgroups() == 0){
+                        $this->message("Remove: uploads table field: {$fieldShortname}");
+                        $this->fields->delete($this->fields->get("name={$fieldShortname}"));
+                    }
                 }
             }
         }
@@ -336,6 +364,7 @@
                 $pageTemplate = $this->templates->get("name={$data['pageName']}_T");
                 if(!$pageTemplate->id){
                    $pageTemplate = new Template();
+                    $this->message("mgmt page template name: {$data['pageName']}_T");
                     $pageTemplate->name = "{$data['pageName']}_T";
                     $pageTemplate->flags = 0;
                     $pageTemplate->noChildren = 0;
@@ -381,15 +410,16 @@
                 $f->parent_id = $pid;
                 $f->columns = "title\n";
                 foreach ($fieldsArray as $field) {
-                    $f->columns .= $field . "\n";
+                    $fieldShortname = substr($field, 0, strpos($field, "_"));
+                    $f->columns .= $fieldShortname . "\n";
                 }
                 $f->columns = substr($f->columns, 0, -1);
 
                 //make fieldgroup for template
-                $ptFG = $this->fieldgroups->get("name=pagetable_$ptName");
+                $ptFG = $this->fieldgroups->get("name=$ptName");
                 if(!$ptFG->id){
                     $ptFG = new Fieldgroup();
-                    $ptFG->name = "pagetable_$ptName";
+                    $ptFG->name = "{$ptName}_FG";
                     $ptFG->append($this->fields->get("name=title"));
                 }
                 
@@ -422,10 +452,10 @@
                 $ptFG->save();
 
                 //make template
-                $ptTemplate = $this->templates->get("name=pagetable_$ptName");
+                $ptTemplate = $this->templates->get("name=$ptName_T");
                 if(!$ptTemplate->id){
                     $ptTemplate = new Template();
-                    $ptTemplate->name = "pagetable_$ptName";
+                    $ptTemplate->name = "{$ptName}_T";
                     $ptTemplate->flags = 0;
                     $ptTemplate->noChildren = 0;
                     $ptTemplate->noParents = 0;
@@ -456,7 +486,7 @@
         public function getUploadsPage($page, $default) {
             $data = wire('modules')->getModuleConfigData($this->className()); 
             $data = array_merge($default, $data);
-            $uploadsPage = $page->child("(name={$data['uploadsPageName']}), (id={$data['uploadsPage_id']})");
+            $uploadsPage = $page->child("name={$data['uploadsPageName']}");
             if(!$uploadsPage->id){
                 
                 $uploadsPage = new Page();
@@ -470,8 +500,8 @@
                                                     $data['uploadsTableTags'], 
                                                     $uploadsPage->id);
                 }
-
-                $uploadsPageFG = $this->fieldgroups->get("(name={$data['uploadsPageName']}_FG), (id={$data['uploadsPageFieldgroup_id']})");
+                $this->message($data['uploadsPageFieldgroup_id']);
+                $uploadsPageFG = $this->fieldgroups->get("name={$data['uploadsPageName']}_FG");
                 if(!$uploadsPageFG->id){
                     $uploadsPageFG = new Fieldgroup();
                     $uploadsPageFG->name = "{$data['uploadsPageName']}_FG";
