@@ -21,26 +21,11 @@
 
         public function __construct() {
             // optionally set our default values before ProcessWire configures the module
-           /* $this->defaults = array(
-                "tableName" => "uploadsystem_options",
-                "tableColumns" => "materialAndColor_Textarea available_Checkbox",
-                "tableLabel" => "Upload System Options Table",
-                "tableTags" => "upload",
-                "pageName" => "uploadsystem_management",
-                "pageTitle" => "Upload System Management",
-                "uploadsPageName" => "uploadsystem_files",
-                "uploadsPageTitle" => "Upload System Files",
-                "uploadsTableName" => "uploadsystem_filesTable",
-                "uploadsTableCols" => "name email ufid units dimensions print_conf_url timestamp body file",
-                "uploadsTableLabel" => "Upload System Files Table",
-                "uploadsTableTags" => "upload"
-            );   */
         }
 
         public function init() {
             // you can now assume that your configuration data has been populated to the module
             // meaning you can access $this->fullname; or $this->email; in any of your module's functions
-
             if(isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], $this->upload_page_url) !== false) {
                 $this->addHookBefore('PageRender::renderPage', $this, 'prependUploadHandler');
                 $this->addHook('ProcessPageView::execute', $this, 'addUploadForm');
@@ -50,6 +35,7 @@
         }
 
         public static function getDefaultConfig() {
+            //TO DO: Add email config settings. See upload-handler.inc
             return array (
                    "upload_form_filepath"                   => "/includes/upload-form.inc",
                    "upload_handler_filepath"                => "/includes/upload-handler.inc",
@@ -541,6 +527,7 @@
         }
 
         public static function getModuleConfigInputfields(array $data) {
+            //TO DO: Add access to email config settings. See upload-handler.inc
             $inputfields = new InputfieldWrapper();
 
             // ask for form markup

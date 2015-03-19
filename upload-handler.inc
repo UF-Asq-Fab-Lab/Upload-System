@@ -26,6 +26,7 @@
 	    // possibly restrict access to this folder using htaccess:
 	    // # RewriteRule ^.tmp_uploads(.*) - [F]
 	    $upload_path = $config->paths->root . ".tmp_uploads/";
+	    $data = wire('modules')->getModuleConfigData('UploadSystem'); 
 
 	    
 	    //process the upload form data
@@ -55,16 +56,16 @@
 	    	$title .= $timestamp;
 	        // create the new page to add the file
 	        $uploadpage = new Page();
-	        $uploadpage->template = "uploadsystem_file";
+	        $uploadpage->template = $templates->get("name={$data['uploadsTableName']}_T";
 	        $uploadpage->title = $title;
 	        $uploadpage->name = $title;
 	        $uploadpage->ufid = $user->ufid;
 	        $uploadpage->units = $units;
 	        $uploadpage->dimensions = $dimensions;
 	        $title = $sanitizer->pageName($title);
-	        $uploadpage->set('Print_Confirmation_URL', $page->Confirmation_URL . $title . "?confirm=1");
+	        $uploadpage->set('printConfURL', $data['confURL'] . $title . "?confirm=1");
 	        $uploadpage->set('timestamp', $timestamp);
-	        $uploadpage->parent = $pages->get($modules->get("UploadSystem")->data['page_id']);
+	        $uploadpage->parent = $pages->get("name={$data['uploadsPageName']}");
 	        $bodystring = "";
 	        $bodystring .= "Machine: " . $input->post->printer . "<br>";
 	        $bodystring .= "Material: " . $input->post->material . "<br>";
@@ -83,16 +84,16 @@
 
 	        $name = $user->name;
 	        $fileName = $files[0];
-	        $email = $page->email;
+	        $email = $data['email'];
 
-			$subject = $page->emailSubject;
-			$emailmessage  = str_replace('%name%', $name, $page->emailBody);
+			$subject = $data['emailSubject'];
+			$emailmessage  = str_replace('%name%', $name, $data['emailBody']);
 			$emailmessage = str_replace('%filename%', $fileName, $emailmessage);
-			$sentmail = mail_utf8($user->email, 'UF A² Fab Lab', $page->email, $subject, $emailmessage);
+			$sentmail = mail_utf8($user->email, 'UF A² Fab Lab', $data['email'], $subject, $emailmessage);
 
-			$noteEmail = $page->email;
-			$noteSubject = $page->noteSubject;
-			$noteMessage = str_replace('%filename%', $fileName, $page->noteBody);
+			$noteEmail = $data['email'];
+			$noteSubject = $data['noteSubject'];
+			$noteMessage = str_replace('%filename%', $fileName, $data['noteBody']);
 			$noteMessage = str_replace('%name%', $name, $noteMessage);
 			$noteSentMail = mail_utf8($noteEmail, 'UF A² Fab Lab', $noteEmail, $noteSubject, $noteMessage); 
 	 
