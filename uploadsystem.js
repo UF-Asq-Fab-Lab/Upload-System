@@ -6,7 +6,7 @@ $(document).ready(function() {
 		//fill the printer dropdown
 		var printersMenu = $("#printersdropdown");
 		$.each(printers, function() {
-			printersMenu.append($("<option />").val(this.title));
+			printersMenu.append("<option>"+this.title+"</option>");
 		});
 	    
 	    //when the printer dropdown selection changes, build new materials dropdown

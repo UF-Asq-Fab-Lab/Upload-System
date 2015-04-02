@@ -2,7 +2,7 @@
 
 /*
 * A² Fab Lab Upload System
-* Thomas R. Storey (trstorey.sysreturn.net)
+* Thomas R. Storey (thomasrstorey.net)
 * contact: storey.thomas@gmail.com
 * 2/12/15
 * Makes an admin page to manage the upload system and uploaded files
@@ -14,7 +14,7 @@
             return array(
                 'title' => 'A² Fab Lab Upload System',
                 'summary' => 'Makes an admin page to manage the upload system and uploaded files.',
-                'version' => 2,
+                'version' => 3,
                 'autoload' => true 
             );
         } 
@@ -27,7 +27,8 @@
             // you can now assume that your configuration data has been populated to the module
             // meaning you can access $this->fullname; or $this->email; in any of your module's functions
             if(isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], $this->upload_page_url) !== false) {
-                $this->addHookBefore('PageRender::renderPage', $this, 'prependUploadHandler');
+                $this->addHookAfter('TemplateFile::render', $this, 'addUploadHandler');
+                //$this->addHookBefore('PageRender::renderPage', $this, 'renderPageWithUploadHandler');
                 $this->addHook('ProcessPageView::execute', $this, 'addUploadForm');
             }
 
@@ -35,12 +36,15 @@
         }
 
         public static function getDefaultConfig() {
-            //TO DO: Add email config settings. See upload-handler.inc
             return array (
                    "upload_form_filepath"                   => "/includes/upload-form.inc",
                    "upload_handler_filepath"                => "/includes/upload-handler.inc",
                    "upload_form_js_filepath"                => "/assets/js/uploadsystem.js",
-                   "email"                                  => "storey.thomas@gmail.com",
+                   "email"                                  => "managerEmail@managerHost.com",
+                   "emailSubject"                           => "Subject for confirmation email sent to user.",
+                   "emailBody"                              => "Body for confirmation email sent to user. %name% = user's name, %filename% = uploaded filename.",
+                   "managerEmailSubject"                    => "Subject for notification email sent to upload manager.",
+                   "managerEmailBody"                       => "Body for notification email sent to upload manager. %name% = user's name, %filename% = uploaded filename.",
                    "upload_page_url"                        => "path/to/upload-page",
                    "page_id"                                => null,
                    "pageTemplate_id"                        => null,
@@ -261,12 +265,12 @@
             $jsonString = 'var printers = [';
                 foreach ($ppages as $printer) {
                     //build material => colors array
-                    $lines = explode("\n", $printer->materialAndColor_Textarea);
+                    $lines = explode("\n", $printer->materialAndColor);
                     $materials = array();
                     foreach ($lines as $line) {
                         //each line is a unique material-color combo
                         $entry = explode(",", $line);
-                        if($entry[2]){ //if available
+                        if(substr($entry[2], 0, 1) == '1'){ //if available
                             if(array_key_exists($entry[0], $materials)){
                                 array_push($materials[$entry[0]], $entry[1]); //push color
                             } else {
@@ -296,23 +300,83 @@
 
         public function addUploadForm(HookEvent $event) {
             $markup = file_get_contents($this->upload_form_filepath);
-            $printerPages = $this->pages->get("name={$this->pageName}")->children("available_Checkbox=1");
-            $json = makeJSONObj($printerPages);
+            $printerPages = $this->pages->get("name={$this->pageName}")->children("available=1");
+            $json = $this->makeJSONObj($printerPages);
             $js = file_get_contents($this->upload_form_js_filepath);
 
             $markup .= '<script type="text/javascript">' . $json . $js . "</script>";
             $event->return = str_ireplace("[upload_form]", $markup, $event->return); 
         }
 
-        public function prependUploadHandler(HookEvent $event) {
-            $render = $event->arguments(0);
+        public function addUploadHandler(HookEvent $event) {
+            $templateFile = $event->object;
+            $options = $templateFile->options;
+            //check if this is a page render, rather than some other use of
+            //templatefile render
+            if(is_array($options) && array_key_exists('pageStack', $options)) {
+                ob_start();
+                require($this->upload_handler_filepath); 
+                $output = "\n" . ob_get_contents() . "\n";
+                ob_end_clean();
+                $event->return = $event->return . $output;
+            }
+        }
 
-            $page = $render->object;
+        /**
+         * Hook callback for PageRender::renderPage
+         *
+         * Replaces default page rendering entirely.
+         *
+         * @param HookEvent $event The hook event
+         * @throws WirePermissionException Page is not currently viewable.
+         */
+        public function renderPageWithUploadHandler(HookEvent $event) {
 
-            $newOptions = array(
-                'prependFile' => $this->upload_handler_filepath
-                );
-            $render->arguments(0, $newOptions);
+            $handler = file_get_contents($this->upload_handler_filepath);
+
+            $parentEvent = $event->arguments(0); // grab event provided to PageRender::renderPage
+            $default = $event->return;
+            // don't mess with admin templates
+            $page = $parentEvent->object;
+            if ($page->template == 'admin') return;
+
+            // double check page's status
+            // taken from PageRender::__render()
+            if ($page->status >= Page::statusUnpublished && !$page->viewable()) {
+                throw new WirePermissionException('Page \'' . $page->url . '\' is not currently viewable.');
+            }
+
+            // forced replacing of default page rendering behaviour
+            $event->replace = true;
+
+            // look for cached data
+            // taken from PageRender::__render()
+            $options = count($parentEvent->arguments) ? $parentEvent->arguments[0] : array();
+            $defaultOptions = array(
+                'forceBuildCache' => false,
+            );
+            $options = array_merge($defaultOptions, $options);
+
+            $cacheAllowed = wire('modules')->get('PageRender')->isCacheAllowed($page);
+            $cacheFile = null;
+
+            if ($cacheAllowed) {
+                $cacheFile = wire('modules')->get('PageRender')->getCacheFile($page);
+                if(!$options['forceBuildCache'] && ($data = $cacheFile->get()) !== false) {
+                    $parentEvent->return = $data;
+                    return;
+                }
+            }
+
+            // render template
+            $output = $handler . $default;
+
+            // cache output if possible
+            // taken from PageRender::__render()
+            if (!empty($output) && $cacheAllowed && !is_null($cacheFile)) $cacheFile->save($output);
+
+            // manually set return of original event
+            $parentEvent->return = $output;
         }
 
         protected function getInstalledPage($uninstall, $defaults) {
@@ -421,6 +485,9 @@
                         $field->name = $fieldShortname;
                         $this->message("Fieldtype".$fieldTypename);
                         $field->type = wire('modules')->get("Fieldtype".$fieldTypename);
+                        if($fieldTypename == "file"){
+                            $field->extensions="obj 3ds stl";
+                        }
                         $field->label = "$ptName $fieldShortname";
                         $field->tags = $ptTags;
                         $field->save();
@@ -563,6 +630,34 @@
             $field->name = 'email';
             $field->label = 'Upload manager email address';
             if(isset($data['email'])) $field->value = $data['email'];
+            $inputfields->add($field);
+
+            // ask for email subject
+            $field = wire('modules')->get('InputfieldText'); 
+            $field->name = 'emailHeader';
+            $field->label = 'Header for confirmation email sent to user.';
+            if(isset($data['emailHeader'])) $field->value = $data['emailHeader'];
+            $inputfields->add($field);
+
+            //ask for email body
+            $field = wire('modules')->get('InputfieldTextarea');
+            $field->name = 'emailBody';
+            $field->label = 'Body for confirmation email sent to user.';
+            if(isset($data['emailBody'])) $field->value = $data['emailBody'];
+            $inputfields->add($field);
+
+            // ask for email subject
+            $field = wire('modules')->get('InputfieldText'); 
+            $field->name = 'managerEmailHeader';
+            $field->label = 'Header for notification email sent to manager.';
+            if(isset($data['emailHeader'])) $field->value = $data['managerEmailHeader'];
+            $inputfields->add($field);
+
+            //ask for email body
+            $field = wire('modules')->get('InputfieldTextarea');
+            $field->name = 'managerEmailBody';
+            $field->label = 'Body for notification email sent to manager.';
+            if(isset($data['emailBody'])) $field->value = $data['managerEmailBody'];
             $inputfields->add($field);
 
             return $inputfields; 
