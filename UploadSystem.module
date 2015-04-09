@@ -71,21 +71,51 @@
                    "uploadsTableName"                       => "uploadsystem_filesTable",
                    "uploadsTableCols"                       => "username_Text email_Email ufid_Integer units_Text dimensions_Text printConfUrl_URL timestamp_Text body_Textarea file_File",
                    "uploadsTableLabel"                      => "Upload System Files Table",
-                   "uploadsTableTags"                       => "upload"
+                   "uploadsTableTags"                       => "upload",
+                   "uploadsLifetime"                        => 30
                 );
         }
 
         public function ___install() {
             $defaults = self::getDefaultConfig();
+            $rootpath = wire('config')->paths->root;
+            $crontabfile = $rootpath . "/cron/crontab.txt";
+            $crontabtxt = "";
+            $this->message($crontabfile);
+            $this->message(file_exists($crontabfile));
+            if(!file_exists($crontabfile)){
+                $crontabtxt .= "MAILTO=".$defaults['email']."\n";
+                $crontabtxt .= "*/2 * * * * ". $root."/cron/clean_uploads.php > " . $root . "/cron/clean_uploads_logs"."\n";
+                $this->message($crontabtxt);
+                if(file_put_contents($crontabfile, $crontabtxt)){
+                    $this->message("wrote file");
+                } else {
+                    $this->message("write file failed, but why? thanks php lol");
+                }
+                
+            } else {
+                $cronContent = file($crontabfile);
+                $preset = false;
+                foreach($cronContent as $line){
+                    if(preg_match('/clean_uploads\.php/', $line)){
+                        $preset = true;
+                    }
+                }
+                if(!preset){ 
+                    array_push($cronContent, "*/2 * * * * ". $root."/cron/clean_uploads.php > " . $root . "/cron/clean_uploads_logs");
+                    file_put_contents($crontabfile, $cronContent);
+                }
+            }
             wire('modules')->saveModuleConfigData($this, $defaults);
             $this->message("Config available?: {$defaults['tableName']}");
             $page = $this->getInstalledPage(false, $defaults);
             $uploadsPage = $this->getUploadsPage($page, $defaults);
             $this->message("Installed to {$page->path}.");
             $this->message("Uploads will go to {$uploadsPage->path}.");
+            exec("crontab ".$rootpath."/cron/crontab.txt");
         }
 
-        /**
+        /*
         * uninstall - delete everything created by the module: 
         *  module page, 
         *  page template, 
@@ -102,7 +132,7 @@
         *  upload filepage template
         *  upload filepage fieldgroup
         *  upload filepage fields
-        **/
+        */
 
         public function ___uninstall() {
             $defaults = self::getDefaultConfig();
@@ -300,7 +330,7 @@
 
         public function addUploadForm(HookEvent $event) {
             $markup = file_get_contents($this->upload_form_filepath);
-            $printerPages = $this->pages->get("name={$this->pageName}")->children("available=1");
+            $printerPages = $this->pages->get("name={$this->pageName}")->children("available=1, check_access=0");
             $json = $this->makeJSONObj($printerPages);
             $js = file_get_contents($this->upload_form_js_filepath);
 
@@ -634,13 +664,13 @@
 
             // ask for email subject
             $field = wire('modules')->get('InputfieldText'); 
-            $field->name = 'emailHeader';
+            $field->name = 'emailSubject';
             $field->label = 'Header for confirmation email sent to user.';
-            if(isset($data['emailHeader'])) $field->value = $data['emailHeader'];
+            if(isset($data['emailSubject'])) $field->value = $data['emailSubject'];
             $inputfields->add($field);
 
             //ask for email body
-            $field = wire('modules')->get('InputfieldTextarea');
+            $field = wire('modules')->get('InputfieldCKEditor');
             $field->name = 'emailBody';
             $field->label = 'Body for confirmation email sent to user.';
             if(isset($data['emailBody'])) $field->value = $data['emailBody'];
@@ -648,16 +678,23 @@
 
             // ask for email subject
             $field = wire('modules')->get('InputfieldText'); 
-            $field->name = 'managerEmailHeader';
+            $field->name = 'managerEmailSubject';
             $field->label = 'Header for notification email sent to manager.';
-            if(isset($data['emailHeader'])) $field->value = $data['managerEmailHeader'];
+            if(isset($data['managerEmailSubject'])) $field->value = $data['managerEmailSubject'];
             $inputfields->add($field);
 
             //ask for email body
-            $field = wire('modules')->get('InputfieldTextarea');
+            $field = wire('modules')->get('InputfieldCKEditor');
             $field->name = 'managerEmailBody';
             $field->label = 'Body for notification email sent to manager.';
-            if(isset($data['emailBody'])) $field->value = $data['managerEmailBody'];
+            if(isset($data['managerEmailBody'])) $field->value = $data['managerEmailBody'];
+            $inputfields->add($field);
+
+            //ask for email body
+            $field = wire('modules')->get('InputfieldInteger');
+            $field->name = 'uploadsLifetime';
+            $field->label = 'Lifetime in seconds for upload files before being cleaned out of the uploads directory.';
+            if(isset($data['uploadsLifetime'])) $field->value = $data['uploadsLifetime'];
             $inputfields->add($field);
 
             return $inputfields; 

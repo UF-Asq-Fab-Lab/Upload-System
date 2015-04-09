@@ -66,7 +66,7 @@
 	        $title = wire('sanitizer')->pageName($title);
 	        $uploadpage->set('printConfUrl', wire('config')->urls->root . $data['upload_page_url'] . $title . "?confirm=1");
 	        $uploadpage->set('timestamp', $timestamp);
-	        $uploadpage->parent = wire('pages')->get("name={$data['uploadsPageName']}");
+	        $uploadpage->parent = wire('pages')->get("name={$data['uploadsPageName']}, check_access=0");
 	        $bodystring = "";
 	        $bodystring .= "Machine: " . wire('input')->post->printer . "<br>";
 	        $bodystring .= "Material: " . wire('input')->post->material . "<br>";
