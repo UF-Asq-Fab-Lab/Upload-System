@@ -32,6 +32,7 @@
                 $this->addHook('ProcessPageView::execute', $this, 'addUploadForm');
             }
 
+            $this->changeCronJobMailTo($this->email);
 
         }
 
@@ -40,7 +41,7 @@
             return array (
                    "upload_form_filepath"                   => $rootpath . "site/templates/includes/upload-form.inc",
                    "upload_handler_filepath"                => $rootpath . "site/templates/includes/upload-handler.inc",
-                   "upload_form_js_filepath"                => $rootpath . "site/templates/scripts/js/uploadsystem.js",
+                   "upload_form_js_filepath"                => $rootpath . "site/templates/scripts/uploadsystem.js",
                    "email"                                  => "managerEmail@managerHost.com",
                    "emailSubject"                           => "Subject for confirmation email sent to user.",
                    "emailBody"                              => "Body for confirmation email sent to user. %name% = user's name, %filename% = uploaded filename.",
@@ -117,6 +118,7 @@
             $uploadsPage = $this->getUploadsPage($page, $defaults);
             $this->message("Installed to {$page->path}.");
             $this->message("Uploads will go to {$uploadsPage->path}.");
+            $this->message("Launch cronjob: " . $rootpath."cron/crontab.txt");
             exec("crontab ".$rootpath."cron/crontab.txt");
         }
 
@@ -309,6 +311,20 @@
                         $this->fields->delete($this->fields->get("name={$fieldShortname}"));
                     }
                 }
+            }
+        }
+
+        public function changeCronJobMailTo($addr){
+            $rootpath = wire('config')->paths->root;
+            $crontabfile = $rootpath . "cron/crontab.txt";
+            $newLine = "MAILTO=".$addr;
+            $crontabLines = file($crontabfile);
+            $oldLine = trim($crontabLines[0]);
+            if(strcmp($newLine, $oldLine) != 0){
+                $crontabLines[0] = $newLine."\n";
+                $updated = implode($crontabLines, '');
+                file_put_contents($crontabfile, $updated);
+                exec("crontab ".$rootpath."cron/crontab.txt");
             }
         }
 
