@@ -1,0 +1,124 @@
+<?php 
+/**
+ * A²Fab Lab Uploads Manager Module
+ *
+ * Developed for the A² Fab Lab at the University of Florida.
+ * Lists all 3d printing materials in an admin tab page.
+ * 
+ * Thomas R Storey, 2015
+ * Licensed under MIT License, see LICENSE.TXT
+ * 
+ * http://fablab.arts.ufl.edu
+ * https://github.com/UF-Asq-Fab-Lab
+ *
+ */
+
+class ProcessMaterial extends ProcessPageType {
+  static public function getModuleInfo(){
+    return array(
+      'title' => 'ProcessMaterial',
+      'version' => 100,
+      'summary' => 'Lists all 3d printing materials in an admin tab page.',
+      'permanent' => false,
+      'permission' => 'materials-admin',
+      'requires' => array('UploadSystem>=1.0.0'),
+      'icon' => 'align-justify',
+      'useNavJSON' => true
+      );
+  }
+
+  protected $lister = null;
+
+  public function __construct() {
+    $this->set('showFields', array('name'));
+    if(wire('modules')->isInstalled("ProcessUploader")){
+      $this->set('showFields', array('title', 'color', 'available'));
+    }
+    $this->set('addLabel', $this->_('Add New')); 
+    $this->set('jsonListLabel', 'name'); // what to use for 'label' property in JSON nav data
+  }
+
+  public function init() {
+    parent::init();
+    $this->template = $this->wire('templates')->get("name=material");
+    $this->lister = $this->wire('modules')->get("ProcessPageLister");
+  }
+
+  protected function getLister($selector = '') {
+    $selector = "template=material, include=all, check_access=0, $selector";
+    $lister = $this->lister;
+    if(!$lister)return null;
+    $lister->editMode = ProcessPageLister::windowModeDirect;
+    $properties = array(
+      'initSelector' => $selector,
+      'columns' => $this->showFields,
+      'defaultSelector' => "title%=",
+      'defaultSort' => 'title',
+      'parent' => $this->page,
+      'template' => $this->template,
+      'editURL' => './edit/',
+      'addURL' => './add/',
+      'allowSystem' => false,
+      'allowIncludeAll' => true
+      );
+    foreach($properties as $name => $val) {
+      $lister->$name = $val;
+    }
+    return $lister;
+  }
+
+  protected function renderList($selector = '', $pageOptions = array()) {
+    $lister = $this->getLister($selector);
+    if(!$lister) return parent::renderList($selector, $pageOptions);
+    return $lister->execute();
+  }
+
+  public function executeConfig() {
+    return $this->getLister()->executeConfig();
+  }
+
+  public function executeViewport() {
+    return $this->getLister()->executeViewport();
+  }
+
+  public function executeReset() {
+    return $this->getLister()->executeReset();
+  }
+
+  public function executeActions() {
+    return $this->getLister()->executeActions();
+  }
+
+  public function ___executeEdit() {
+    $this->addHookAfter('ProcessPageEdit::buildForm', $this, 'hookBuildForm');
+    return parent::___executeEdit();
+  }
+
+  public function hookBuildForm(HookEvent $event) {
+    $form = $event->return;
+    $theme = $form->getChildByName('admin_theme');
+    if(!$theme) return;
+    if(!$theme->attr('value')) {
+      $theme->attr('value', $this->wire('config')->defaultAdminTheme);
+    }
+  }
+
+  public function ___executeNavJSON(array $options = array()) {
+    $materialPages = $this->wire('pages')->find("template=material");
+    $parentID = $this->page->id;
+    
+    // pull icons out of pageLabelField and populate to an 'icon' property for JSON nav
+    $materialArray = array();
+    foreach($materialPages as $ep) {
+      $materialArray[] = $ep;
+    }
+    
+    $options['items'] = $materialArray;
+    $options['itemLabel'] = 'title';
+    $options['add'] = "add/?parent_id=".$parentID;
+    
+    return parent::___executeNavJSON($options);
+  }
+
+}
+?>

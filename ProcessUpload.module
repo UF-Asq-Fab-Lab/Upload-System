@@ -1,0 +1,121 @@
+<?php
+/**
+ * A²Fab Lab Uploads Manager Module
+ *
+ * Developed for the A² Fab Lab at the University of Florida.
+ * Lists all uploaded files in an admin tab page.
+ * 
+ * Thomas R Storey, 2015
+ * Licensed under MIT License, see LICENSE.TXT
+ * 
+ * http://fablab.arts.ufl.edu
+ * https://github.com/UF-Asq-Fab-Lab
+ *
+ */
+
+class ProcessUpload extends ProcessPageType {
+  static public function getModuleInfo(){
+    return array(
+      'title' => 'ProcessUpload',
+      'version' => 100,
+      'summary' => 'Lists all uploaded files in an admin tab page.',
+      'permanent' => false,
+      'permission' => 'uploads-admin',
+      'requires' => array('UploadSystem>=1.0.0'),
+      'icon' => 'inbox',
+      'useNavJSON' => true
+      );
+  }
+
+  protected $lister = null;
+
+  public function __construct() {
+    $this->set('showFields', array('name'));
+    if(wire('modules')->isInstalled("ProcessUploader")){
+      $this->set('showFields', array('title', 'username', 'ufid', 'upload_file', 'confirm'));
+    }
+    $this->set('addLabel', $this->_('Add New')); 
+    $this->set('jsonListLabel', 'name'); // what to use for 'label' property in JSON nav data
+  }
+
+  public function init() {
+    parent::init();
+    $this->template = $this->wire('templates')->get("name=upload");
+    $this->lister = $this->wire('modules')->get("ProcessPageLister");
+  }
+
+  protected function getLister($selector = '') {
+    $selector = "template=upload, include=all, check_access=0, $selector";
+    $lister = $this->lister;
+    if(!$lister)return null;
+    $lister->editMode = ProcessPageLister::windowModeDirect;
+    $properties = array(
+      'initSelector' => $selector,
+      'columns' => $this->showFields,
+      'defaultSelector' => "username%=",
+      'defaultSort' => 'timestamp',
+      'parent' => $this->page,
+      'template' => $this->template,
+      'editURL' => './edit',
+      'addURL' => './add/',
+      'allowSystem' => false,
+      'allowIncludeAll' => true
+      );
+    foreach($properties as $name => $val) {
+      $lister->$name = $val;
+    }
+    return $lister;
+  }
+
+  protected function renderList($selector = '', $pageOptions = array()) {
+    $lister = $this->getLister($selector);
+    if(!$lister) return parent::renderList($selector, $pageOptions);
+    return $lister->execute();
+  }
+
+  public function executeConfig() {
+    return $this->getLister()->executeConfig();
+  }
+
+  public function executeViewport() {
+    return $this->getLister()->executeViewport();
+  }
+
+  public function executeReset() {
+    return $this->getLister()->executeReset();
+  }
+
+  public function executeActions() {
+    return $this->getLister()->executeActions();
+  }
+
+  public function ___executeEdit() {
+    $this->addHookAfter('ProcessPageEdit::buildForm', $this, 'hookBuildForm');
+    return parent::___executeEdit();
+  }
+
+  public function hookBuildForm(HookEvent $event) {
+    $form = $event->return;
+    $theme = $form->getChildByName('admin_theme');
+    if(!$theme) return;
+    if(!$theme->attr('value')) {
+      $theme->attr('value', $this->wire('config')->defaultAdminTheme);
+    }
+  }
+
+  public function ___executeNavJSON(array $options = array()) {
+    $uploadPages = $this->wire('pages')->find("template=upload");
+    $parentID = $this->page->id;
+    $uploadArray = array();
+    foreach($uploadPages as $up) {
+      $uploadArray[] = $up;
+    }
+    $options['items'] = $uploadArray;
+    $options['itemLabel'] = 'title';
+    $options['add'] = "add/?parent_id=".$parentID;
+    return parent::___executeNavJSON($options);
+  }
+
+}
+
+?>

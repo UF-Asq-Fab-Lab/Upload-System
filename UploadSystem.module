@@ -8,733 +8,133 @@
 * Makes an admin page to manage the upload system and uploaded files
 */
 
-    class UploadSystem extends Process implements Module, ConfigurableModule {
+    class UploadSystem extends WireData implements Module{
 
         public static function getModuleInfo() {
             return array(
                 'title' => 'A² Fab Lab Upload System',
-                'summary' => 'Makes an admin page to manage the upload system and uploaded files.',
-                'version' => 3,
-                'autoload' => true 
+                'summary' => 'The Root Module for the A² Fab Lab Upload System. Installs several other modules that make it all work.',
+                'version' => 100,
+                'author' => "Thomas R Storey",
+                'autoload' => true,
+                'permanent' => false,
+                'installs' => array(
+                                    "ProcessMaterial",
+                                    "ProcessUpload",
+                                    "ProcessUploader",
+                                    "ProcessUploadConfirm",
+                                    "ProcessUploadEmailer"
+                                )
             );
+        }
+
+        public static function getTemplateFields(){
+            return array(
+              'upload_fields' => array(
+                'username' => 'FieldtypeText',
+                'email' => 'FieldtypeEmail',
+                'ufid' => 'FieldtypeInteger',
+                'timestamp' => 'FieldtypeDatetime',
+                'upload_file' => 'FieldtypeFile',
+                'dimensions' => 'FieldtypeText',
+                'units' => 'FieldtypeText',
+                'material' => 'FieldtypePage',
+                'notes' => 'FieldtypeTextarea',
+                'confirm' => 'FieldtypeCheckbox',
+                'hash' => 'FieldtypeText'
+                ),
+              'material_fields' => array(
+                'color' => 'FieldtypeText',
+                'notes' => 'FieldtypeTextarea',
+                'available' => 'FieldtypeCheckbox'
+                )
+              );
         } 
 
-        public function __construct() {
-            // optionally set our default values before ProcessWire configures the module
+        public function init(){
+            // This module is, at least for now, purely an organizational convenience.
+            // I think it will eventually handle installing/uninstalling and cronjobs
         }
 
-        public function init() {
-            // you can now assume that your configuration data has been populated to the module
-            // meaning you can access $this->fullname; or $this->email; in any of your module's functions
-            if(isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], $this->upload_page_url) !== false) {
-                $this->addHookAfter('TemplateFile::render', $this, 'addUploadHandler');
-                //$this->addHookBefore('PageRender::renderPage', $this, 'renderPageWithUploadHandler');
-                $this->addHook('ProcessPageView::execute', $this, 'addUploadForm');
+        private function deletePagesByTemplate($name){
+            $pages = $this->wire('pages')->find("template=$name, include=all, check_access=0");
+            foreach ($pages as $key => $p) {
+              $this->message("Page:" . $key . " => " . $p);
+              if($p->fields->get("name=upload_file")->id){
+                $file = $p->upload_file;
+                $p->of(false);
+                $p->upload_file->deleteAll();
+                $p->save();
+                $p->of(true);
+              }
+              $this->message("delete page: " . $p->name);
+              $this->wire('pages')->delete($p, true);
             }
+          }
 
-            $this->changeCronJobMailTo($this->email);
-
+        private function deleteTemplateByName($name){
+            $this->message("Template:" . $name);
+            $template = wire('templates')->get($name);
+            $fg = wire('fieldgroups')->get($name);
+            if($template->id){
+              $this->message("delete template: " . $template->name);
+              $this->wire("templates")->delete($template);
+              
+            }
+            if($fg->id){
+              $this->message("delete fieldgroup: " . $fg->name);
+              $this->wire("fieldgroups")->delete($fg);
+            }
         }
 
-        public static function getDefaultConfig() {
-            $rootpath = wire('config')->paths->root;
-            return array (
-                   "upload_form_filepath"                   => $rootpath . "site/templates/includes/upload-form.inc",
-                   "upload_handler_filepath"                => $rootpath . "site/templates/includes/upload-handler.inc",
-                   "upload_form_js_filepath"                => $rootpath . "site/templates/scripts/uploadsystem.js",
-                   "email"                                  => "managerEmail@managerHost.com",
-                   "emailSubject"                           => "Subject for confirmation email sent to user.",
-                   "emailBody"                              => "Body for confirmation email sent to user. %name% = user's name, %filename% = uploaded filename.",
-                   "managerEmailSubject"                    => "Subject for notification email sent to upload manager.",
-                   "managerEmailBody"                       => "Body for notification email sent to upload manager. %name% = user's name, %filename% = uploaded filename.",
-                   "upload_page_url"                        => "path/to/upload-page",
-                   "page_id"                                => null,
-                   "pageTemplate_id"                        => null,
-                   "pageFieldGroup_id"                      => null,
-                   "uploadsystem_optionsTable_id"           => null,
-                   "uploadsystem_optionsTableTemplate_id"   => null,
-                   "uploadsystem_optionsTableFieldgroup_id" => null,
-                   "uploadsystem_optionsTableFields_ids"    => "",
-                   "uploadsPage_id"                         => null,
-                   "uploadsPageTemplate_id"                 => null,
-                   "uploadsPageFieldgroup_id"               => null,
-                   "uploadsystem_filesTable_id"             => null,
-                   "uploadsystem_filesTemplate_id"          => null,
-                   "uploadsystem_filesFieldgroup_id"        => null,
-                   "uploadsystem_filesTableFields_ids"      => "",
-                   "tableName"                              => "uploadsystem_options",
-                   "tableColumns"                           => "materialAndColor_Textarea available_Checkbox",
-                   "tableLabel"                             => "Upload System Options Table",
-                   "tableTags"                              => "upload",
-                   "pageName"                               => "uploadsystem_management",
-                   "pageTitle"                              => "Upload System Management",
-                   "uploadsPageName"                        => "uploadsystem_files",
-                   "uploadsPageTitle"                       => "Upload System Files",
-                   "uploadsTableName"                       => "uploadsystem_filesTable",
-                   "uploadsTableCols"                       => "username_Text email_Email ufid_Integer units_Text dimensions_Text printConfUrl_URL timestamp_Text body_Textarea file_File",
-                   "uploadsTableLabel"                      => "Upload System Files Table",
-                   "uploadsTableTags"                       => "upload",
-                   "uploadsLifetime"                        => 30
-                );
+        private function deleteFields($fields){
+            foreach($fields as $key => $f){
+              $this->message("Field:" . $key . " => " . $f);
+              $field = $this->wire('fields')->get($key);
+              if($field->id && !strcmp($field->tags, "uploader")) {
+                $this->message("delete field: " . $field->name);
+                $this->wire('fields')->delete($field);
+              }
+            }
         }
 
-        public function ___install() {
-            $defaults = self::getDefaultConfig();
-            $rootpath = wire('config')->paths->root;
-            $crontabfile = $rootpath . "cron/crontab.txt";
-            $crontabtxt = "";
-            $this->message($crontabfile);
-            $this->message(file_exists($crontabfile));
-            if(!file_exists($crontabfile)){
-                $crontabtxt .= "MAILTO=".$defaults['email']."\n";
-                $crontabtxt .= "*/2 * * * * ". $rootpath."cron/clean_uploads.php > " . $rootpath . "cron/clean_uploads_logs"."\n";
-                $this->message($crontabtxt);
-                if(file_put_contents($crontabfile, $crontabtxt)){
-                    $this->message("wrote file");
-                } else {
-                    $e = error_get_last();
-                    $this->message("Error: " . $e['message']);
-                }
-                
-            } else {
-                $this->message("crontab.txt exists");
-                $cronContent = file($crontabfile);
-                $preset = false;
-                foreach($cronContent as $line){
-                    if(preg_match('/clean_uploads\.php/', $line)){
-                        $this->message("uploads task already set");
-                        $preset = true;
+        private function deletePageByName($name){
+            $this->message("page name: " . $name);
+            $page = $this->wire('pages')->get("name=$name, include=all, check_access=0");
+            if($page->id){
+              $this->message("delete page: " . $page->name);
+              $this->wire('pages')->delete($page, true);
+            }
+        }
+
+        private function deletePagesByProcess($prarray){
+            foreach ($prarray as $pname) {
+                $this->message("process page: " . $pname);
+                $id = wire('modules')->getModuleID($pname);
+                $this->message("Module ID: $id");
+                if($id){
+                    $ppgs = wire("pages")->find("process=$id, include=all, check_access=0");
+                    foreach ($ppgs as $key => $page) {
+                        $this->message("delete process page: " . $page->name);
+                        $this->wire("pages")->delete($page, true);
                     }
                 }
-                if(!$preset){
-                    $this->message("uploads task not set, setting...");
-                    array_push($cronContent, "*/2 * * * * ". $rootpath."cron/clean_uploads.php > " . $rootpath . "cron/clean_uploads_logs\n");
-                    file_put_contents($crontabfile, $cronContent);
-                }
+                
             }
-            wire('modules')->saveModuleConfigData($this, $defaults);
-            $this->message("Config available?: {$defaults['tableName']}");
-            $page = $this->getInstalledPage(false, $defaults);
-            $uploadsPage = $this->getUploadsPage($page, $defaults);
-            $this->message("Installed to {$page->path}.");
-            $this->message("Uploads will go to {$uploadsPage->path}.");
-            $this->message("Launch cronjob: " . $rootpath."cron/crontab.txt");
-            exec("crontab ".$rootpath."cron/crontab.txt");
         }
-
-        /*
-        * uninstall - delete everything created by the module: 
-        *  module page, 
-        *  page template, 
-        *  page template fieldgroup, 
-        *  pagetable (page template field)
-        *  pagetable template
-        *  pagetable fieldgroup
-        *  pagetable page fields
-        *  uploads parent page
-        *  upload file pages
-        *  upload parent page template
-        *  upload parent page fieldgroup
-        *  upload parent page fields
-        *  upload filepage template
-        *  upload filepage fieldgroup
-        *  upload filepage fields
-        */
 
         public function ___uninstall() {
-            $defaults = self::getDefaultConfig();
-            $data = wire('modules')->getModuleConfigData($this->className());
-            $data = array_merge($defaults, $data);
-
-            $rootpath = wire('config')->paths->root;
-            $crontabfile = $rootpath . "cron/crontab.txt";
-
-            $crontabtxt = file_get_contents($crontabfile);
-            $removed = str_replace("*/2 * * * * ". $rootpath."cron/clean_uploads.php > " . $rootpath . "cron/clean_uploads_logs"."\n", '', $crontabtxt);
-            $this->message($removed);
-            file_put_contents($crontabfile, $removed);
-
-
-            $page = $this->pages->get("name={$data['pageName']}");
-            $pageTemplate = $this->templates->get("name={$data['pageName']}_T");
-            $pageFieldgroup = $this->fieldgroups->get("name={$data['pageName']}_FG");
-
-            $optionsTable = $this->fields->get("name={$data['tableName']}");
-            $optionsTableTemplate = $this->templates->get("name={$data['tableName']}_T");
-            $optionsTableFieldgroup = $this->fieldgroups->get("name={$data['tableName']}_FG");
-
-            $uploadsPage = $this->pages->get("name={$data['uploadsPageName']}");
-            $uploadsPageTemplate = $this->templates->get("name={$data['uploadsPageName']}_T");
-            $uploadsPageFieldgroup = $this->fieldgroups->get("name={$data['uploadsPageName']}_FG");
-
-            $uploadsTable = $this->fields->get("name={$data['uploadsTableName']}");
-            $uploadsTableTemplate = $this->templates->get("name={$data['uploadsTableName']}_T");
-            $uploadsTableFieldgroup = $this->fieldgroups->get("name={$data['uploadsTableName']}_FG");
-
-            
-            //REMOVE PAGE AND CHILDREN
-            if($page->id) {
-                if(count($page->children)){
-                    foreach ($page->children as $child) {
-                        $this->message("Removed page table entry {$child->path}");
-                        $this->pages->delete($child); 
-                    }
-                } 
-                $this->message("Removed {$page->path}");
-                $this->pages->delete($page, true); 
-            }
-
-            //REMOVE PAGE TEMPLATE AND FIELDGROUP
-            if($pageTemplate->id){
-                $pageTemplate->flags = Template::flagSystemOverride;
-                $pageTemplate->flags = 0;
-                $pageTemplate->save();
-                if ($pageTemplate->getNumPages() > 0) {
-                    throw new WireException("Can't uninstall because template is used by some pages.");
-                } else {
-                    $this->message("Remove: page template: {$pageTemplate->name}");
-                    $this->templates->delete($pageTemplate);
-                }
-            }
-
-            if($pageFieldgroup->id){
-                $this->message("Remove: page template fieldgroup: {$pageFieldgroup->name}");
-                $this->fieldgroups->delete($pageFieldgroup);
-            }
-
-            //REMOVE CHILD TEMPLATE (PAGE TABLE ENTRY TEMPLATE AND FIELDGROUP)
-            if($optionsTableTemplate->id){
-                $optionsTableTemplate->flags = Template::flagSystemOverride;
-                $optionsTableTemplate->flags = 0;
-                $optionsTableTemplate->save();
-                if($optionsTableTemplate->getNumPages() > 0){
-                    throw new WireException("Can't uninstall because template is used by some pages.");
-                } else {
-                    $this->message("Remove: pagetable template: {$optionsTableTemplate->name}");
-                    $this->templates->delete($optionsTableTemplate);
-                }
-            }
-
-            if($optionsTableFieldgroup->id){
-                $this->message("Remove: pagetable template fieldgroup: {$optionsTableFieldgroup->name}");
-                $this->fieldgroups->delete($optionsTableFieldgroup);  
-            }
-
-            //REMOVE PAGETABLE FIELD
-            if($optionsTable->id){
-                $this->message("Remove: pagetable: {$optionsTable->name}");
-                $this->fields->delete($optionsTable);
-            }
-
-            //REMOVE PAGETABLE ENTRY FIELDS
-            $fieldsArray = explode(' ', $data['tableColumns']);
-            foreach ($fieldsArray as $field) {
-                 $fieldShortname = substr($field, 0, strpos($field, "_"));
-                if($this->fields->get("name=$fieldShortname")){
-                    if($this->fields->get("name=$fieldShortname")->numFieldgroups() == 0){
-                        $this->message("Remove: pagetable field: {$field->name}");
-                        $this->fields->delete($this->fields->get("name={$fieldShortname}"));
-                    }
-                }
-            }
-
-            // remove uploads parent page and child pages
-            //       remove any stored files
-            if($uploadsPage->id){
-                if(count($uploadsPage->children) > 0){
-                    foreach ($uploadsPage->children as $child) {
-                        $this->message("removed upload file page: {$child->title}");
-                        $file = $child->File;
-                        $this->files->delete($file);
-                        $this->pages->delete($child);
-                    }
-                }
-                $this->message("removed uploads parent page");
-                $this->pages->delete($uploadsPage);
-            }
-
-            // remove uploads parent page and child templates, fieldgroups
-            if($uploadsPageTemplate->id){
-                $uploadsPageTemplate->flags = Template::flagSystemOverride;
-                $uploadsPageTemplate->flags = 0;
-                $uploadsPageTemplate->save();
-                if($uploadsPageTemplate->getNumPages() > 0){
-                    throw new WireException("Can't uninstall because template is used by some pages.");
-                } else {
-                    $this->message("Remove: uploads table template: {$uploadsPageTemplate->name}");
-                    $this->templates->delete($uploadsPageTemplate);
-                }
-            }
-
-            if($uploadsPageFieldgroup->id){
-                $this->message("Remove: uploads table fieldgroup: {$uploadsPageFieldgroup->name}");
-                $this->fieldgroups->delete($uploadsPageFieldgroup);
-            }
-            try{
-                if($uploadsTableTemplate->id){
-                    $uploadsTableTemplate->flags = Template::flagSystemOverride;
-                    $uploadsTableTemplate->flags = 0;
-                    $uploadsTableTemplate->save();
-                    if($uploadsTableTemplate->getNumPages() > 0){
-                        throw new WireException("Can't uninstall because template is used by some pages.");
-                    } else {
-                        $this->message("Remove: pagetable template: {$uploadsTableTemplate->name}");
-                        $this->templates->delete($uploadsTableTemplate);
-                    }
-                }
-            } catch (WireException $we) {
-                $thepage = wire('pages')->get("template=".$uploadsTableTemplate->name.",include=all");
-                $this->message("deleting the invisible, evil page: " . $thepage->name);
-                $this->pages->delete($thepage);
-                $this->message("Remove: pagetable template: {$uploadsTableTemplate->name}");
-                $this->templates->delete($uploadsTableTemplate);
-            }
-
-            if($uploadsTableFieldgroup->id){
-                $this->message("Remove: pagetable template fieldgroup: {$uploadsTableFieldgroup->name}");
-                $this->fieldgroups->delete($uploadsTableFieldgroup);  
-            }
-
-            // remove uploads parent page and child fields
-            if($uploadsTable->id){
-                $this->message("Remove: uploads table: {$uploadsTable->name}");
-                $this->fields->delete($uploadsTable);
-            }
-
-            $fieldsArray = explode(' ', $data['uploadsTableCols']);
-            foreach ($fieldsArray as $field) {
-                 $fieldShortname = substr($field, 0, strpos($field, "_"));
-
-                if($this->fields->get("name=$fieldShortname")){
-                    if($this->fields->get("name=$fieldShortname")->numFieldgroups() == 0){
-                        $this->message("Remove: uploads table field: {$fieldShortname}");
-                        $this->fields->delete($this->fields->get("name={$fieldShortname}"));
-                    }
-                }
-            }
-        }
-
-        public function changeCronJobMailTo($addr){
-            $rootpath = wire('config')->paths->root;
-            $crontabfile = $rootpath . "cron/crontab.txt";
-            $newLine = "MAILTO=".$addr;
-            $crontabLines = file($crontabfile);
-            $oldLine = trim($crontabLines[0]);
-            if(strcmp($newLine, $oldLine) != 0){
-                $crontabLines[0] = $newLine."\n";
-                $updated = implode($crontabLines, '');
-                file_put_contents($crontabfile, $updated);
-                exec("crontab ".$rootpath."cron/crontab.txt");
-            }
-        }
-
-        public function makeJSONObj(PageArray $ppages){
-            $jsonString = 'var printers = [';
-                foreach ($ppages as $printer) {
-                    //build material => colors array
-                    $lines = explode("\n", $printer->materialAndColor);
-                    $materials = array();
-                    foreach ($lines as $line) {
-                        //each line is a unique material-color combo
-                        $entry = explode(",", $line);
-                        if(substr($entry[2], 0, 1) == '1'){ //if available
-                            if(array_key_exists($entry[0], $materials)){
-                                array_push($materials[$entry[0]], $entry[1]); //push color
-                            } else {
-                                $materials[$entry[0]] = array($entry[1]); //new entry, first color
-                            } 
-                        }
-                    }
-                    
-                    $jsonString .= '{"title" : ' . '"' . $printer->title . '", ';
-                    $jsonString .= '"materials" : [';
-                    foreach ($materials as $material => $colors) {
-                        $jsonString .= '{"name" : ' . '"' . $material . '", ';
-                        $jsonString .= '"colors" : [';
-                        foreach ($colors as $color) {
-                            $jsonString .= '"' . $color . '", ';
-                        }
-                        $jsonString = rtrim($jsonString, ", ");
-                        $jsonString .= ']}, ';
-                    }
-                    $jsonString = rtrim($jsonString, ", ");
-                    $jsonString .= ']}, ';
-                }
-            $jsonString = rtrim($jsonString, ", ");
-            $jsonString .= '];';
-            return $jsonString;
-        }
-
-        public function addUploadForm(HookEvent $event) {
-            $markup = file_get_contents($this->upload_form_filepath);
-            $printerPages = $this->pages->get("name={$this->pageName}")->children("available=1, check_access=0");
-            $json = $this->makeJSONObj($printerPages);
-            $js = file_get_contents($this->upload_form_js_filepath);
-
-            $markup .= '<script type="text/javascript">' . $json . $js . "</script>";
-            $event->return = str_ireplace("[upload_form]", $markup, $event->return); 
-        }
-
-        public function addUploadHandler(HookEvent $event) {
-            $templateFile = $event->object;
-            $options = $templateFile->options;
-            //check if this is a page render, rather than some other use of
-            //templatefile render
-            if(is_array($options) && array_key_exists('pageStack', $options)) {
-                ob_start();
-                require($this->upload_handler_filepath); 
-                $output = "\n" . ob_get_contents() . "\n";
-                ob_end_clean();
-                $event->return = $event->return . $output;
-            }
-        }
-
-        /**
-         * Hook callback for PageRender::renderPage
-         *
-         * Replaces default page rendering entirely.
-         *
-         * @param HookEvent $event The hook event
-         * @throws WirePermissionException Page is not currently viewable.
-         */
-        public function renderPageWithUploadHandler(HookEvent $event) {
-
-            $handler = file_get_contents($this->upload_handler_filepath);
-
-            $parentEvent = $event->arguments(0); // grab event provided to PageRender::renderPage
-            $default = $event->return;
-            // don't mess with admin templates
-            $page = $parentEvent->object;
-            if ($page->template == 'admin') return;
-
-            // double check page's status
-            // taken from PageRender::__render()
-            if ($page->status >= Page::statusUnpublished && !$page->viewable()) {
-                throw new WirePermissionException('Page \'' . $page->url . '\' is not currently viewable.');
-            }
-
-            // forced replacing of default page rendering behaviour
-            $event->replace = true;
-
-            // look for cached data
-            // taken from PageRender::__render()
-            $options = count($parentEvent->arguments) ? $parentEvent->arguments[0] : array();
-            $defaultOptions = array(
-                'forceBuildCache' => false,
-            );
-            $options = array_merge($defaultOptions, $options);
-
-            $cacheAllowed = wire('modules')->get('PageRender')->isCacheAllowed($page);
-            $cacheFile = null;
-
-            if ($cacheAllowed) {
-                $cacheFile = wire('modules')->get('PageRender')->getCacheFile($page);
-                if(!$options['forceBuildCache'] && ($data = $cacheFile->get()) !== false) {
-                    $parentEvent->return = $data;
-                    return;
-                }
-            }
-
-            // render template
-            $output = $handler . $default;
-
-            // cache output if possible
-            // taken from PageRender::__render()
-            if (!empty($output) && $cacheAllowed && !is_null($cacheFile)) $cacheFile->save($output);
-
-            // manually set return of original event
-            $parentEvent->return = $output;
-        }
-
-        protected function getInstalledPage($uninstall, $defaults) {
-
-            $data = wire('modules')->getModuleConfigData($this->className());
-            $data = array_merge($defaults, $data);
-
-            $parent = $this->pages->get("name=module,parent=".$this->config->adminRootPageID); 
-            $page = $parent->child("name={$data['pageName']}"); 
-
-            if(!$page->id && !$uninstall) {    
-                $page = new Page();
-                $page->parent = $parent; 
-
-
-                $pageTable = $this->fields->get("name={$data['tableName']}");
-                if(!$pageTable->id){
-                    $pageTable = $this->getPageTable($data['tableName'], 
-                                                     $data['tableColumns'], 
-                                                     $data['tableLabel'], 
-                                                     $data['tableTags'], 
-                                                     $page->id);
-                }
-
-                $pageFG = $this->fieldgroups->get("name={$data['pageName']}_FG");
-                if(!$pageFG->id){
-                    $pageFG = new Fieldgroup();
-                    $pageFG->name = "{$data['pageName']}_FG";
-                    $pageFG->append($this->fields->get("name=title"));
-                    $pageFG->append($this->fields->get("name=process"));
-                    $pageFG->append($pageTable);
-                    $pageFG->save(); 
-                }
-                
-                $pageTemplate = $this->templates->get("name={$data['pageName']}_T");
-                if(!$pageTemplate->id){
-                   $pageTemplate = new Template();
-                    $this->message("mgmt page template name: {$data['pageName']}_T");
-                    $pageTemplate->name = "{$data['pageName']}_T";
-                    $pageTemplate->flags = 0;
-                    $pageTemplate->noChildren = 0;
-                    $pageTemplate->noParents = 0;
-                    $pageTemplate->noGlobal = 1;
-                    $pageTemplate->slashUrls = 1;
-                    $pageTemplate->fieldgroup = $pageFG;
-                    $pageTemplate->save(); 
-                }
-
-                $page->template = $pageTemplate;
-                $page->name = $data['pageName']; 
-                $page->title = $data['pageTitle'];
-                $page->process = $this; 
-                $page->sort = $parent->numChildren;
-                $page->save();
-
-                //update config data with ids of new pages, templates, fields...
-                $data = wire('modules')->getModuleConfigData('UploadSystem'); 
-                $data['page_id'] = $page->id;
-                $data['optionsTable_id'] = $pageTable->id;
-                $data['pageFieldgroup_id'] = $pageFG->id;
-                $data['pageTemplate_id'] = $pageTemplate->id;
-                wire('modules')->saveModuleConfigData('UploadSystem', $data);
-            }
-            
-            return $page;   
-        }
-
-        public function getPageTable($ptName, $ptCols, $ptLabel, $ptTags, $pid){
-
-            $f = $this->fields->get("name={$ptName}");
-
-            if(!$f->id){
-               $data = wire('modules')->getModuleConfigData('UploadSystem'); 
-               $fieldsArray = explode(" ", $ptCols);
-
-                $f = new Field();
-                $f->type = wire('modules')->get('FieldtypePageTable');
-                $f->name = $ptName;
-                $f->label = $ptLabel;
-                $f->tags = $ptTags;
-                $f->parent_id = $pid;
-                $f->columns = "title\n";
-                foreach ($fieldsArray as $field) {
-                    $fieldShortname = substr($field, 0, strpos($field, "_"));
-                    $f->columns .= $fieldShortname . "\n";
-                }
-                $f->columns = substr($f->columns, 0, -1);
-
-                //make fieldgroup for template
-                $ptFG = $this->fieldgroups->get("name=$ptName");
-                if(!$ptFG->id){
-                    $ptFG = new Fieldgroup();
-                    $ptFG->name = "{$ptName}_FG";
-                    $ptFG->append($this->fields->get("name=title"));
-                }
-                
-                //Add fields to fieldgroup
-                foreach($fieldsArray as $fieldName) {
-                    //make column fields if they do not exist
-                    $fieldTypename = substr($fieldName, strpos($fieldName, "_") + 1);
-                    $fieldShortname = substr($fieldName, 0, strpos($fieldName, "_"));
-                    $field = $this->fields->get($fieldShortname);
-                    if(!$field->id){
-                        //field does not exist
-                        $field = new Field();
-                        $field->name = $fieldShortname;
-                        $this->message("Fieldtype".$fieldTypename);
-                        $field->type = wire('modules')->get("Fieldtype".$fieldTypename);
-                        if($fieldShortname === "file"){
-                            $field->extensions="obj 3ds stl";
-                        }
-                        $field->label = "$ptName $fieldShortname";
-                        $field->tags = $ptTags;
-                        $field->save();
-                        $ptFG->append($field);
-                    } else {
-                        //field does exist, so add it
-                      if(!$ptFG->getField($field->name)){
-                        $ptFG->append($field); 
-                      } 
-                    }
-                    $data['{$ptName}TableFields_ids'] .= $field->id . " ";   
-                }
-                $data['{$ptName}TableFields_ids'] = substr($data['{$ptName}TableFields_ids'], 0, -1);
-                
-                $ptFG->save();
-
-                //make template
-                $ptTemplate = $this->templates->get("name=$ptName_T");
-                if(!$ptTemplate->id){
-                    $ptTemplate = new Template();
-                    $ptTemplate->name = "{$ptName}_T";
-                    $ptTemplate->flags = 0;
-                    $ptTemplate->noChildren = 0;
-                    $ptTemplate->noParents = 0;
-                    $ptTemplate->noGlobal = 1;
-                    $ptTemplate->slashUrls = 1;
-                    $ptTemplate->fieldgroup = $ptFG;
-                    $ptTemplate->save();
-                }
-                
-                $f->template_id = $ptTemplate->id;
-
-                $f->save(); 
-
-                //update config data with ids of new pages, templates, fields...
-                
-                $data['optionsTableTemplate_id'] = $ptTemplate->id;
-                $data['optionsTableFieldgroup_id'] = $ptFG->id;
-                wire('modules')->saveModuleConfigData('UploadSystem', $data);
-            }
-
-            return $f;
-
-        }
-
-        /**
-        *    get or make uploads parent page, with template and fieldgroup (use a pagetable to hold the filepages)
-        **/
-        public function getUploadsPage($page, $default) {
-            $data = wire('modules')->getModuleConfigData($this->className()); 
-            $data = array_merge($default, $data);
-            $uploadsPage = $page->child("name={$data['uploadsPageName']}");
-            if(!$uploadsPage->id){
-                
-                $uploadsPage = new Page();
-                $uploadsPage->parent = $page;
-                $uploadsTable = $this->fields->get("name={$data['uploadsTableName']}");
-
-                if(!$uploadsTable->id){
-                    $uploadsTable = $this->getPageTable($data['uploadsTableName'], 
-                                                    $data['uploadsTableCols'], 
-                                                    $data['uploadsTableLabel'], 
-                                                    $data['uploadsTableTags'], 
-                                                    $uploadsPage->id);
-                }
-                $this->message($data['uploadsPageFieldgroup_id']);
-                $uploadsPageFG = $this->fieldgroups->get("name={$data['uploadsPageName']}_FG");
-                if(!$uploadsPageFG->id){
-                    $uploadsPageFG = new Fieldgroup();
-                    $uploadsPageFG->name = "{$data['uploadsPageName']}_FG";
-                    $uploadsPageFG->append($this->fields->get("name=title"));
-                    $uploadsPageFG->append($this->fields->get("name=process"));
-                    $uploadsPageFG->append($uploadsTable);
-                    $uploadsPageFG->save(); 
-                }
-
-                $uploadsPageTemplate = $this->templates->get("name={$data['uploadsPageName']}_T");
-                if(!$uploadsPageTemplate->id){
-                   $uploadsPageTemplate = new Template();
-                    $uploadsPageTemplate->name = "{$data['uploadsPageName']}_T";
-                    $uploadsPageTemplate->flags = 0;
-                    $uploadsPageTemplate->noChildren = 0;
-                    $uploadsPageTemplate->noParents = 0;
-                    $uploadsPageTemplate->noGlobal = 1;
-                    $uploadsPageTemplate->slashUrls = 1;
-                    $uploadsPageTemplate->fieldgroup = $uploadsPageFG;
-                    $uploadsPageTemplate->save(); 
-                }
-
-                $uploadsPage->template = $uploadsPageTemplate;
-                $uploadsPage->name = $data['uploadsPageName']; 
-                $uploadsPage->title = $data['uploadsPageTitle'];
-                $uploadsPage->process = $this; 
-                $uploadsPage->save();
-
-                $data['uploadsPage_id'] = $uploadsPage->id;
-                $data['uploadsystem_filesTable_id'] = $uploadsTable->id;
-                $data['uploadsPageFieldgroup_id'] = $uploadsPageFG->id;
-                $data['uploadsPageTemplate_id'] = $uploadsPageTemplate->id;
-                wire('modules')->saveModuleConfigData($this->className(), $data);
-            }
-
-            return $uploadsPage;
-        }
-
-        public static function getModuleConfigInputfields(array $data) {
-            //TO DO: Add access to email config settings. See upload-handler.inc
-            $inputfields = new InputfieldWrapper();
-
-            // ask for form markup
-            $field = wire('modules')->get('InputfieldText');
-            $field->name = 'upload_form_filepath';
-            $field->label = "Upload form markup";
-            if(isset($data['upload_form_filepath'])) $field->value = $data['upload_form_filepath'];
-            $inputfields->add($field);
-
-            // ask for upload handler
-            $field = wire('modules')->get('InputfieldText');
-            $field->name = 'upload_handler_filepath';
-            $field->label = "Upload handler file";
-            if(isset($data['upload_handler_filepath'])) $field->value = $data['upload_handler_filepath'];
-            $inputfields->add($field);
-
-            //ask for upload javascript
-            $field = wire('modules')->get('InputfieldText');
-            $field->name = 'upload_form_js_filepath';
-            $field->label = "Upload javascript file";
-            if(isset($data['upload_form_js_filepath'])) $field->value = $data['upload_form_js_filepath'];
-            $inputfields->add($field);
-
-            // ask for upload page url
-            $field = wire('modules')->get('InputfieldText');
-            $field->name = 'upload_page_url';
-            $field->label = "Upload page URL";
-            if(isset($data['upload_page_url'])) $field->value = $data['upload_page_url'];
-            $inputfields->add($field); 
-
-            // ask for an email address
-            $field = wire('modules')->get('InputfieldEmail'); 
-            $field->name = 'email';
-            $field->label = 'Upload manager email address';
-            if(isset($data['email'])) $field->value = $data['email'];
-            $inputfields->add($field);
-
-            // ask for email subject
-            $field = wire('modules')->get('InputfieldText'); 
-            $field->name = 'emailSubject';
-            $field->label = 'Header for confirmation email sent to user.';
-            if(isset($data['emailSubject'])) $field->value = $data['emailSubject'];
-            $inputfields->add($field);
-
-            //ask for email body
-            $field = wire('modules')->get('InputfieldCKEditor');
-            $field->name = 'emailBody';
-            $field->label = 'Body for confirmation email sent to user.';
-            if(isset($data['emailBody'])) $field->value = $data['emailBody'];
-            $inputfields->add($field);
-
-            // ask for email subject
-            $field = wire('modules')->get('InputfieldText'); 
-            $field->name = 'managerEmailSubject';
-            $field->label = 'Header for notification email sent to manager.';
-            if(isset($data['managerEmailSubject'])) $field->value = $data['managerEmailSubject'];
-            $inputfields->add($field);
-
-            //ask for email body
-            $field = wire('modules')->get('InputfieldCKEditor');
-            $field->name = 'managerEmailBody';
-            $field->label = 'Body for notification email sent to manager.';
-            if(isset($data['managerEmailBody'])) $field->value = $data['managerEmailBody'];
-            $inputfields->add($field);
-
-            //ask for email body
-            $field = wire('modules')->get('InputfieldInteger');
-            $field->name = 'uploadsLifetime';
-            $field->label = 'Lifetime in seconds for upload files before being cleaned out of the uploads directory.';
-            if(isset($data['uploadsLifetime'])) $field->value = $data['uploadsLifetime'];
-            $inputfields->add($field);
-
-            return $inputfields; 
+            $fields = $this->getTemplateFields();
+            $this->deletePagesByTemplate("upload");
+            $this->deletePagesByTemplate("material");
+            $this->deleteTemplateByName("upload");
+            $this->deleteTemplateByName("material");
+            $this->deleteFields($fields['upload_fields']);
+            $this->deleteFields($fields['material_fields']);
+            $this->deletePageByName("uploader");
+            //$this->deletePageByName("material");
+            $this->deletePagesByProcess(array("ProcessUpload", "ProcessMaterial", "ProcessUploadEmailer", "ProcessUploadConfirm"));
+            //parent::___uninstall();
         }
     }
 ?>
