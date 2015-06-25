@@ -21,7 +21,7 @@ class ProcessMaterial extends ProcessPageType {
       'summary' => 'Lists all 3d printing materials in an admin tab page.',
       'permanent' => false,
       'permission' => 'materials-admin',
-      'requires' => array('Uploader>=1.0.0'),
+      'requires' => array('UploadSystem>=1.0.0'),
       'icon' => 'align-justify',
       'useNavJSON' => true
       );
@@ -31,7 +31,7 @@ class ProcessMaterial extends ProcessPageType {
 
   public function __construct() {
     $this->set('showFields', array('name'));
-    if(wire('modules')->isInstalled("Uploader")){
+    if(wire('modules')->isInstalled("ProcessUploader")){
       $this->set('showFields', array('title', 'color', 'available'));
     }
     $this->set('addLabel', $this->_('Add New')); 
@@ -101,18 +101,6 @@ class ProcessMaterial extends ProcessPageType {
     if(!$theme->attr('value')) {
       $theme->attr('value', $this->wire('config')->defaultAdminTheme);
     }
-  }
-
-  public function ___install(){
-    $parent = $this->wire('pages')->get("name=uploader");
-    $p = new Page();
-    $p->template = "admin";
-    $p->name = "materials";
-    $p->title = "Materials";
-    $p->process = $this;
-    $p->parent = $parent;
-    $p->save();
-    parent::___install();
   }
 
   public function ___executeNavJSON(array $options = array()) {

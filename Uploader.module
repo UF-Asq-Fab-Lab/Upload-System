@@ -1,0 +1,732 @@
+<?php
+/**
+ * A²Fab Lab Uploads Manager Module
+ *
+ * Developed for the A² Fab Lab at the University of Florida.
+ * Root Module that handles installing, uninstalling and hooking together
+ * the child modules for the Upload system.
+ *
+ * Thomas R Storey, 2015
+ * Licensed under MIT License, see LICENSE.TXT
+ *
+ * http://fablab.arts.ufl.edu
+ * https://github.com/UF-Asq-Fab-Lab
+ *
+ */
+
+class Uploader extends WireData implements Module, ConfigurableModule {
+
+  /**
+  *
+  */
+
+  //protected $data;
+  protected $uploadfields;
+  protected $uploadpageID;
+  protected $uploadpagePath;
+  protected $confirmpageID;
+  protected $confirmpagePath;
+  protected $editPath;
+
+  /**
+  *
+  */
+
+
+  public static function getModuleInfo() {
+    return array(
+      'title' => 'A² Fab Lab Upload System',
+      'summary' => 'The Root Module for the A² Fab Lab Upload System.',
+      'version' => 100,
+      'author' => "Thomas R Storey",
+      'autoload' => true,
+      'singular' => true,
+      'permanent' => false,
+      'installs' => array("ProcessMaterial","ProcessUpload","UploadFormBuilder")
+    );
+  }
+
+  /**
+  *
+  */
+
+  public static function getDefaultConfig(){
+    return array(
+      'uploader_page_path' => array(
+        'type' => 'InputfieldText',
+        'value' => '/upload/',
+        'label' => 'Path to the page on the site that will show the upload interface to the user'
+        ),
+      'uploader_page_id' => array(
+        'type' => 'InputfieldInteger',
+        'value' => 0,
+        'label' => 'id number of upload page (should be filled automatically)'
+        ),
+      'confirm_page_path' => array(
+        'type' => 'InputfieldText',
+        'value' => '/confirm/',
+        'label' => 'Path to the page users will link to in order to confirm uploaded files for printing'
+        ),
+      'confirm_page_id' => array(
+        'type' => 'InputfieldInteger',
+        'value' => 0,
+        'label' => 'id number of confirm page (should be filled automatically)'
+        ),
+      'contact_address' => array(
+        'type' => 'InputfieldEmail',
+        'value' => 'storey.thomas@gmail.com',
+        'label' => 'Please provide the email address which should be alerted when files are uploaded.'
+        ),
+      'contact_name' => array(
+        'type' => 'InputfieldText',
+        'value' => 'A<sup>2</sup> Fab Lab Uploads Manager',
+        'label' => 'Please provide the email address which should be alerted when files are uploaded.'
+        ),
+      'upload_subject' => array(
+        'type' => 'InputfieldText',
+        'value' => 'Upload Confirmation',
+        'label' => 'Set the subject line for upload confirmation emails sent to users'
+        ),
+      'upload_body' => array(
+        'type' => 'InputfieldTextarea',
+        'value' => 'You uploaded a file gj',
+        'label' => 'Set the default body text for upload confirmation emails sent to users'
+        ),
+      'notification_subject' => array(
+        'type' => 'InputfieldText',
+        'value' => 'A file was uploaded',
+        'label' => 'Set the subject line for upload notification emails sent to the admin'
+        ),
+      'notification_body' => array(
+        'type' => 'InputfieldTextarea',
+        'value' => 'You should work on that',
+        'label' => 'Set the default body text for upload notification emails sent to the admin',
+      ),
+      'allowed_filetypes' => array(
+        'type' => 'InputfieldText',
+        'value' => 'obj stl 3ds',
+        'label' => 'Please provide a space delimited (no commas or periods) list of allowed file extensions'
+      ),
+      'request_subject' => array(
+        'type' => 'InputfieldText',
+        'value' => 'File Ready to Print',
+        'label' => 'Confirmation Request Email Message'
+      ),
+      'request_body' => array(
+        'type' => 'InputfieldTextarea',
+        'value' => 'Follow <a href="[url]">this link</a> to confirm!',
+        'label' => 'Confirmation Request Email Message'
+        ),
+      'confirm_subject' => array(
+        'type' => 'InputfieldText',
+        'value' => 'File Confirmed to Print',
+        'label' => 'Confirmation Request Email Message'
+      ),
+      'confirm_body' => array(
+        'type' => 'InputfieldTextarea',
+        'value' => 'Go ahead and print it!',
+        'label' => 'Confirmation Request Email Message'
+        )
+    );
+  }
+
+  /**
+  *
+  */
+
+  public static function getFields(){
+    return array(
+      'upload_fields' => array(
+        'title' => 'PageTitle',
+        'username' => 'FieldtypeText',
+        'email' => 'FieldtypeEmail',
+        'ufid' => 'FieldtypeInteger',
+        'timestamp' => 'FieldtypeText',
+        'upload_file' => 'FieldtypeFile',
+        'dimensions' => 'FieldtypeText',
+        'units' => 'FieldtypeText',
+        'material' => 'FieldtypePage',
+        'notes' => 'FieldtypeTextarea',
+        'confirm' => 'FieldtypeCheckbox',
+        'hash' => 'FieldtypeText',
+        'estimated_price' => 'FieldtypeText',
+        'estimated_completion' => 'FieldtypeText'
+        ),
+      'material_fields' => array(
+        'title' => 'PageTitle',
+        'color' => 'FieldtypeText',
+        'notes' => 'FieldtypeTextarea',
+        'available' => 'FieldtypeCheckbox'
+        ),
+      );
+  }
+
+  /**
+  *
+  */
+
+  public static function getInputfields(){
+    return array(
+      'upload_form' => array(
+        'is_water_tight' => array (
+          'type' => 'InputfieldCheckbox',
+          'label' => 'Is your model water-tight?',
+          'id' => 'water_input',
+          'name' => 'water_input',
+          'value' => 'unchecked',
+          'required' => true
+          ),
+        'is_scaled' => array(
+          'type' => 'InputfieldCheckbox',
+          'label' => 'Is your model scaled to the correct number of units?',
+          'id' => 'scaled_input',
+          'name' => 'scaled_input',
+          'value' => 'unchecked',
+          'required' => true
+          ),
+        'is_closed' => array(
+          'type' => 'InputfieldCheckbox',
+          'label' => 'Is your model free of curves or open surfaces?',
+          'id' => 'closed_input',
+          'name' => 'closed_input',
+          'value' => 'unchecked',
+          'required' => true
+          ),
+        'material' => array(
+          'type' => 'InputfieldPage',
+          'label' => 'Material',
+          'required' => true,
+          'id' => 'material_input',
+          'name' => 'material_input',
+          'findPagesSelector' => 'template=material, check_access=0, include=all',
+          'inputfield' => 'InputfieldSelect',
+          'labelFieldName' => 'title'
+          ),
+        'units' => array(
+          'type' => 'InputfieldSelect',
+          'label' => 'Units',
+          'id' => 'units_input',
+          'name' => 'units_input',
+          'required' => true,
+          'options' => "+Inches\nMillimeters\nCentimeters"
+          ),
+        'dimensions' => array(
+          'type' => 'InputfieldText',
+          'label' => 'Dimensions',
+          'id' => 'dimensions_input',
+          'name' => 'dimensions_input',
+          'required' => true,
+          'placeholder' => '<Length>x<Width>x<Height>'
+          ),
+        'comments' => array(
+          'type' => 'InputfieldTextarea',
+          'label' => 'Comments',
+          'id' => 'comments_input',
+          'name' => 'comments_input',
+          'required' => false,
+          ),
+        'file' => array(
+          'type' => 'InputfieldFile',
+          'label' => 'File',
+          'id' => 'file_input',
+          'name' => 'file_input',
+          'required' => true,
+          'extensions' => 'obj stl 3ds',
+          'maxFiles' => 1
+        ),
+        'submit' => array(
+          'type' => 'InputfieldSubmit',
+          'label' => 'Upload File',
+          'id' => 'upload_file',
+          'name' => 'upload_file',
+          'value' => 'Upload File',
+          'icon' => 'upload'
+        )
+      )
+    );
+  }
+
+  /**
+  * init()
+  * Initialize class variables.
+  * Add hooks to TemplateFile::render to inject forms as necessary.
+  */
+
+  public function init(){
+    $this->data = wire('modules')->getModuleConfigData($this);
+    $this->uploadfields = self::getInputfields();
+    $this->uploadpagePath = $this->data['uploader_page_path'];
+    $this->uploadpageID = $this->data['uploader_page_id'];
+    $this->confirmpagePath = $this->data['confirm_page_path'];
+    $this->confirmpageID = $this->data['confirm_page_id'];
+    $this->uploadsPageID = wire('pages')->get("name=uploads, check_access=0, include=all")->id;
+    $this->editPath = wire('config')->urls->admin.'uploader/uploads/edit?id=';
+
+    if(wire('input')->post->send_request){
+      //send email requesting confirmation to print
+      $post = wire('input')->post;
+      if($this->sendEmail($post->email, $post->username,
+                          $this->data['contact_address'], $this->data['contact_name'],
+                          $post->subject, $post->message)){
+        $this->message("Request for Confirmation Sent");
+      }
+    }
+
+    if(wire('input')->post->upload_file){
+      //process form to save uploaded file
+      //send email confirming successful upload
+      //send email to notify manager that a file has been uploaded
+      $post = wire('input')->post;
+      $this->processUpload($post);
+      $this->sendEmail(wire('user')->email, wire('user')->name,
+                       $this->data['contact_address'], $this->data['contact_name'],
+                       $this->data['upload_subject'], $this->data['upload_body']);
+
+      $this->sendEmail($this->data['contact_address'], $this->data['contact_name'],
+                       $this->data['contact_address'], $this->data['contact_name'],
+                       $this->data['notification_subject'], $this->data['notification_body']);
+    }
+
+    if(wire('input')->get->confirm){
+      //send email to notify manager that a file has been confirmed to print
+      $get = wire('input')->get;
+      $username = wire('user')->name;
+      $email = wire('user')->email;
+      //use selectors to find exactly the page that matches the request
+      $toconfirm = wire('pages')->get("hash=$get->confirm, template=upload, confirm=0, username=$username");
+      if($toconfirm->id){
+        $toconfirm->confirm = 1;
+        $toconfirm->save();
+        if($this->sendEmail($email, $username,
+                            $this->data['contact_address'], $this->data['contact_name'],
+                            $this->data['confirm_subject'], $this->data['confirm_body'])){
+          $this->message("Confirmation Notification Sent");
+        }
+      } else {
+        $this->message("Confirmation Failed");
+      }
+
+    }
+
+  }
+
+  /**
+  *
+  */
+
+  protected function processUpload($post){
+    //Thanks to @renobird for the original version of this code.
+    // tmp upload folder for additional security
+    // possibly restrict access to this folder using htaccess:
+    // # RewriteRule ^.tmp_uploads(.*) - [F]
+    $upload_path = wire('config')->paths->root . ".tmp_uploads/";
+    //process the upload form data
+    $timestamp = date("m-d-Y_H:i:s");
+    $title = wire('sanitizer')->pageName(wire('user')->name);
+    $email = wire('sanitizer')->email(wire('user')->email);
+    $notes = wire('sanitizer')->textarea($post->comments_input);
+    $material = $post->material_input;
+    $units = $post->units_input;
+    $dimensions = $post->dimensions_input;
+
+    // new wire upload
+    $u = new WireUpload('file_input');
+    $u->setMaxFiles(1);
+    $u->setOverwrite(false);
+    $u->setDestinationPath($upload_path);
+    $u->setValidExtensions(explode(" ", $this->data['allowed_filetypes']));
+
+    // execute upload and check for errors
+    $files = $u->execute();
+
+    if(!$u->getErrors()){
+      foreach($files as $filename){
+        $title .= wire('sanitizer')->text($filename);
+      }
+      $title .= $timestamp;
+      // create the new page to add the file
+      $uploadpage = new Page();
+      $uploadpage->template = wire('templates')->get("name=upload");
+      $uploadpage->title = $title;
+      $uploadpage->username = wire('user')->name;
+      $uploadpage->ufid = wire('user')->ufid;
+      $uploadpage->material = wire('pages')->get("template=material, id=$material");
+      $uploadpage->units = $units;
+      $uploadpage->dimensions = $dimensions;
+      $uploadpage->process = wire('modules')->get('ProcessUploadEmailer');
+      $uploadpage->notes = $notes;
+      $uploadpage->hash = md5($title);
+      $uploadpage->timestamp = $timestamp;
+      $uploadpage->parent = wire('pages')->get("name=uploads");
+      $uploadpage->email = $email;
+      $uploadpage->save();
+
+      $confirmpage = wire('pages')->get($this->confirmpageID);
+      $confirmpage->hashes.= ",".$uploadpage->hash;
+      $confirmpage->save();
+      $this->message("Time to add the files...");
+      // add files upload
+      foreach($files as $filename) {
+        $this->message($filename);
+          $uploadpage->upload_file = $upload_path . $filename;
+      }
+      // save page
+      $uploadpage->save();
+  } else {
+      // remove files
+      foreach($files as $filename) unlink($upload_path . $filename);
+
+      // get the errors
+      foreach($u->getErrors() as $error) $message .= "<p class='error'>$error</p>";
+  }
+
+}
+
+  /**
+  *
+  */
+
+  protected function sendEmail($to, $toName, $from, $fromName, $subject, $body){
+    $mailer = wireMail();
+    $mailer->to($to, $toName)->from($from, $fromName);
+    $mailer->subject($subject)->body($body);
+    $recipients = $mailer->send();
+    return $recipients;
+  }
+
+  /**
+  *
+  */
+
+  public function ready(){
+    $this->hookBuildForms();
+  }
+
+  /**
+  *
+  */
+
+  public function hookBuildForms(){
+    $page = wire('page');
+
+    if($page->id == $this->uploadpageID){
+      $this->addHookAfter('TemplateFile::render', $this, 'hookUploadForm');
+    } else if($page->id == $this->confirmpageID){
+      $this->addHookAfter('TemplateFile::render', $this, 'hookConfirmForm');
+    } else if($page->id == $this->uploadsPageID){
+      $this->addHookAfter('ProcessPageEdit::buildForm', $this, 'hookRequestForm');
+    }
+  }
+
+  /**
+  *
+  */
+
+  protected function hookUploadForm(HookEvent $event){
+    $page = wire('page');
+    $formBuilder = new UploadFormBuilder($event, $page);
+    $event->return = str_replace("[uploader]", $formBuilder->buildUploadForm(), $event->return);
+  }
+
+  /**
+  *
+  */
+
+  protected function hookConfirmForm(HookEvent $event){
+    $page = wire('page');
+    $formBuilder = new UploadFormBuilder($event, $page);
+    $event->return = str_replace("[confirm]", $formBuilder->buildConfirmForm(), $event->return);
+  }
+
+  /**
+  *
+  */
+
+  protected function hookRequestForm(HookEvent $event){
+    $page = wire('page');
+    $formBuilder = new UploadFormBuilder($event, $page);
+    $form = $event->return;
+    $form->append($formBuilder->buildEditTab());
+    $event->return = $form;
+  }
+
+  /**
+  *
+  */
+
+  private function deletePagesByTemplate($name){
+    $pages = $this->wire('pages')->find("template=$name, include=all, check_access=0");
+      foreach ($pages as $key => $p) {
+        $this->message("Page:" . $key . " => " . $p);
+        if($p->fields->get("name=upload_file")->id){
+          $file = $p->upload_file;
+          $p->of(false);
+          $p->upload_file->deleteAll();
+          $p->save();
+          $p->of(true);
+        }
+        $this->message("delete page: " . $p->name);
+        $this->wire('pages')->delete($p, true);
+      }
+  }
+
+  /**
+  *
+  */
+
+  private function deleteTemplateByName($name){
+      $this->message("Template:" . $name);
+      $template = wire('templates')->get($name);
+      $fg = wire('fieldgroups')->get($name);
+      if($template->id){
+        $this->message("delete template: " . $template->name);
+        $this->wire("templates")->delete($template);
+
+      }
+      if($fg->id){
+        $this->message("delete fieldgroup: " . $fg->name);
+        $this->wire("fieldgroups")->delete($fg);
+      }
+  }
+
+  /**
+  *
+  */
+
+  private function deleteFields($fields){
+    foreach($fields as $key => $f){
+      $this->message("Field:" . $key . " => " . $f);
+      $field = $this->wire('fields')->get($key);
+      if($field->id && !strcmp($field->tags, "uploader")) {
+        $this->message("delete field: " . $field->name);
+        $this->wire('fields')->delete($field);
+      }
+    }
+  }
+
+  /**
+  *
+  */
+
+  private function deletePageByName($name){
+    $this->message("page name: " . $name);
+    $page = $this->wire('pages')->get("name=$name, include=all, check_access=0");
+    if($page->id){
+      $this->message("delete page: " . $page->name);
+      $this->wire('pages')->delete($page, true);
+    }
+  }
+
+  /**
+  *
+  */
+
+  private function deletePagesByProcess($prarray){
+    foreach ($prarray as $pname) {
+      $this->message("process page: " . $pname);
+      $id = wire('modules')->getModuleID($pname);
+      $this->message("Module ID: $id");
+      if($id){
+          $ppgs = wire("pages")->find("process=$id, include=all, check_access=0");
+          foreach ($ppgs as $key => $page) {
+              $this->message("delete process page: " . $page->name);
+              $this->wire("pages")->delete($page, true);
+          }
+      }
+
+    }
+  }
+
+  /**
+  *
+  */
+
+  private function getTemplate($fieldsArray, $type){
+    $t = $this->templates->get("name=".$type);
+    if(!$t->id){
+        $t = new Template();
+        $t->name = $type;
+        $t->tags = "uploader";
+        $t->noChildren = 0;
+        $t->noParents = 0;
+        $t->fieldgroup = $this->getFieldgroup($fieldsArray, $type);
+        $t->save();
+    }
+    return $t;
+  }
+
+  /**
+  *
+  */
+
+  private function getFieldgroup($fieldsArray, $type){
+    $fg = $this->fieldgroups->get("name=".$type);
+    if(!$fg->id){
+        $fg = new Fieldgroup();
+        $fg->name = $type;
+        foreach ($fieldsArray as $name => $kind) {
+            $fg->append($this->getField($name, $kind));
+        }
+        $fg->save();
+    }
+
+    return $fg;
+  }
+
+  /**
+  *
+  */
+
+  private function getField($name, $type){
+    $f = $this->fields->get("name=$name");
+    if(!$f->id){
+        $f = new Field();
+        $f->name = $name;
+        $f->type = $type;
+        if(!strcmp($type, "FieldtypeFile")){
+          $f->extensions = str_replace(",", " ", self::getDefaultConfig()["allowed_filetypes"]["value"]);
+          $f->maxFiles = 1;
+        }
+        if(!strcmp($type, "FieldtypePage")){
+          // TODO: custom configuration for page fieldtype?
+          $f->findPagesSelector = 'template=material, check_access=0, include=all';
+          $f->template_id = wire('templates')->get("name=material")->id;
+        }
+        $f->label = ucwords(str_replace("_", " ", $name));
+        $f->tags = "uploader";
+        $f->save();
+    }
+    return $f;
+  }
+
+  /**
+  *
+  */
+
+  private function getProcessListPage(){
+    $p = $this->wire('pages')->get("name=uploader");
+    if(!$p->id){
+      $p = new Page();
+      $p->template = "admin";
+      $p->name = "uploader";
+      $p->title = "Uploader";
+      $p->process = $this->wire('modules')->get('ProcessList');
+      $p->parent = $this->wire('pages')->get($this->wire('config')->adminRootPageID);
+      $p->save();
+    }
+    return $p->id;
+  }
+
+  /**
+  *
+  */
+
+  private function getConfirmPage(){
+    $p = $this->wire('pages')->get("name=confirm");
+    if(!$p->id){
+      $p = new Page();
+      $p->template = "basic-page"; //user will likely want to change this to something else
+      $p->name = "confirm";
+      $p->title = "Confirm Upload for Printing";
+      $p->parent = $this->wire('pages')->get("/");
+      $p->body = "[confirm]";
+      $p->save();
+    }
+    return $p;
+  }
+
+  /**
+  *
+  */
+
+  private function getUploaderPage(){
+    $p = $this->wire('pages')->get("name=upload");
+    if(!$p->id){
+      $p = new Page();
+      $p->template = "basic-page"; //user will likely want to change this to something else
+      $p->name = "upload";
+      $p->title = "Upload";
+      $p->parent = $this->wire('pages')->get("/");
+      $p->body = "[uploader]";
+      $p->save();
+    }
+    return $p;
+  }
+
+  /**
+  *
+  */
+
+  protected function flattenConfig($array){
+    // returns an array that has just the key,value relations of the config arrays
+    // removes the types and labels
+    $out = array();
+    foreach ($array as $key => $value) {
+      $out[$key] = $value['value'];
+    }
+    return $out;
+  }
+
+  /**
+  *
+  */
+
+  public function ___install(){
+    $defaults = self::getDefaultConfig();
+    $fields = self::getFields();
+    $materialTemplate = $this->getTemplate($fields['material_fields'], 'material');
+    $uploadTemplate = $this->getTemplate($fields['upload_fields'], 'upload');
+    $uploaderPage = $this->getUploaderPage();
+    $confirmPage = $this->getConfirmPage();
+    $listPage = $this->getProcessListPage();
+    $defaults = $this->flattenConfig($defaults);
+    $defaults['uploader_page_id'] = $uploaderPage->id;
+    $defaults['uploader_page_path'] = $uploaderPage->path;
+    $defaults['confirm_page_id'] = $confirmPage->id;
+    $defaults['confirm_page_path'] = $confirmPage->path;
+    wire('modules')->saveModuleConfigData($this, $defaults);
+  }
+
+  /**
+  *
+  */
+
+  public function ___uninstall() {
+    $fields = self::getFields();
+    $this->deletePagesByTemplate("upload");
+    $this->deletePagesByTemplate("material");
+    $this->deleteTemplateByName("upload");
+    $this->deleteTemplateByName("material");
+    $this->deleteFields($fields['upload_fields']);
+    $this->deleteFields($fields['material_fields']);
+    $this->deletePageByName("uploader");
+    $this->deletePageByName("upload");
+    $this->deletePageByName("confirm");
+    $this->deletePagesByProcess(array("ProcessUpload", "ProcessMaterial"));
+  }
+
+  /**
+  *
+  */
+
+  public static function getModuleConfigInputFields(array $data) {
+    $inputfields = new InputFieldWrapper();
+    $defaults = self::getDefaultConfig();
+
+    foreach ($defaults as $key => $value) {
+        $field = wire('modules')->get($value['type']);
+        $field->name = $key;
+        $field->label = $value['label'];
+        if(isset($data[$key])){
+          $field->value = $data[$key];
+        } else {
+          $field->value = $value['value'];
+        }
+        $inputfields->add($field);
+    }
+    return $inputfields;
+  }
+
+}
+
+?>

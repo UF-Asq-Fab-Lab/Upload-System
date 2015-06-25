@@ -21,7 +21,7 @@ class ProcessUpload extends ProcessPageType {
       'summary' => 'Lists all uploaded files in an admin tab page.',
       'permanent' => false,
       'permission' => 'uploads-admin',
-      'requires' => array('UploadSystem>=1.0.0'),
+      'requires' => array('Uploader>=1.0.0'),
       'icon' => 'inbox',
       'useNavJSON' => true
       );
@@ -31,7 +31,7 @@ class ProcessUpload extends ProcessPageType {
 
   public function __construct() {
     $this->set('showFields', array('name'));
-    if(wire('modules')->isInstalled("ProcessUploader")){
+    if(wire('modules')->isInstalled("Uploader")){
       $this->set('showFields', array('title', 'username', 'ufid', 'upload_file', 'confirm'));
     }
     $this->set('addLabel', $this->_('Add New')); 
@@ -101,6 +101,18 @@ class ProcessUpload extends ProcessPageType {
     if(!$theme->attr('value')) {
       $theme->attr('value', $this->wire('config')->defaultAdminTheme);
     }
+  }
+
+  public function ___install(){
+    $parent = $this->wire('pages')->get("name=uploader");
+    $p = new Page();
+    $p->template = "admin";
+    $p->name = "uploads";
+    $p->title = "Uploads";
+    $p->process = $this;
+    $p->parent = $parent;
+    $p->save();
+    parent::___install();
   }
 
   public function ___executeNavJSON(array $options = array()) {

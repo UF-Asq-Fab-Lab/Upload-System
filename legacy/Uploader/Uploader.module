@@ -1,0 +1,391 @@
+<?php
+/**
+ * ProcessWire Uploader Process
+ *
+ * Developed for the A² Fab Lab at the University of Florida.
+ * Provides a frontend interface for uploading files for 3D printing
+ * Provides a backend interface and system to manage the upload lifecycle.
+ *
+ * Thomas R Storey, 2015
+ * Licensed under MIT License, see LICENSE.TXT
+ * 
+ * http://fablab.arts.ufl.edu
+ * https://github.com/UF-Asq-Fab-Lab
+ *
+ */
+
+class Uploader extends WireData implements ConfigurableModule {
+
+  static public function getModuleInfo(){
+    //requires ProcessUpload
+    return array(
+      'title' => 'Uploader',
+      'version' => 100,
+      'author' => 'Thomas R Storey',
+      'summary' => 'Provides a frontend interface for uploading files for 3D printing Provides a backend interface and system to manage the upload lifecycle.',
+      'href' => 'https://github.com/UF-Asq-Fab-Lab',
+      'requires' => array('UploadSystem>=1.0.0'),
+      'icon' => 'upload',
+      'singular' => true,
+      'autoload' => true,
+      'useNavJSON' => true
+    ); 
+  }
+
+  protected $uploadTemplateID = 0;
+  protected $defaults;
+
+  public static function getDefaultConfig(){
+    return array(
+      'uploader_page' => array(
+        'type' => 'InputfieldText',
+        'value' => '/upload/',
+        'label' => 'Path to the page on the site that will show the upload interface to the user'
+        ),
+      'uploader_page_id' => array(
+        'type' => 'InputfieldInteger',
+        'value' => 0,
+        'label' => 'id number of upload page (should be filled automatically'
+        ),
+      'email' => array(
+        'type' => 'InputfieldEmail',
+        'value' => 'managerEmail@host.com',
+        'label' => 'Please provide the email address which should be alerted when files are uploaded.'
+        ),
+      'emailSubject' => array(
+        'type' => 'InputfieldText',
+        'value' => 'bla bla bla',
+        'label' => 'Set the subject line for upload confirmation emails sent to users'
+        ),
+      'emailBody' => array(
+        'type' => 'InputfieldText',
+        'value' => 'stuff',
+        'label' => 'Set the default body text for upload confirmation emails sent to users'
+        ),
+      'managerEmailSubject' => array(
+        'type' => 'InputfieldText',
+        'value' => ';slkgjalskgj',
+        'label' => 'Set the subject line for upload notification emails sent to the admin'
+        ),
+      'managerEmailBody' => array(
+        'type' => 'InputfieldText',
+        'value' => 'a;lskglaksjg', 
+        'label' => 'Set the default body text for upload notification emails sent to the admin',
+      ),
+      'uploader_filepath' => array(
+        'type' => 'InputfieldText',
+        'value' => '/var/www/html/ProcessWire-dev/site/modules/Uploader/Uploader', 
+        'label' => 'Set the path to the Uploader.php file on the server'
+      ),
+      'allowed_filetypes' => array(
+        'type' => 'InputfieldText',
+        'value' => 'obj stl 3ds',
+        'label' => 'Please provide a space delimited (no commas or periods) list of allowed file extensions'
+      ),
+      'email_message' => array(
+        'type' => 'InputfieldTextarea',
+        'value' => '[url]',
+        'label' => 'Confirmation Request Email Message'
+        )
+    );
+  }
+
+  public static function getTemplateFields(){
+    return array(
+      'upload_fields' => array(
+        'title' => 'FieldtypeText',
+        'username' => 'FieldtypeText',
+        'email' => 'FieldtypeEmail',
+        'ufid' => 'FieldtypeInteger',
+        'timestamp' => 'FieldtypeDatetime',
+        'upload_file' => 'FieldtypeFile',
+        'dimensions' => 'FieldtypeText',
+        'units' => 'FieldtypeText',
+        'material' => 'FieldtypePage',
+        'notes' => 'FieldtypeTextarea',
+        'confirm' => 'FieldtypeCheckbox',
+        'hash' => 'FieldtypeText',
+        'process' => 'FieldtypeModule'
+        ),
+      'material_fields' => array(
+        'title' => 'FieldtypeText',
+        'color' => 'FieldtypeText',
+        'notes' => 'FieldtypeTextarea',
+        'available' => 'FieldtypeCheckbox'
+        )
+      );
+  }
+
+  public function init() {
+    $class = $this->className();
+    if(is_file($this->config->paths->$class . "$class.css")) $this->config->styles->add($this->config->urls->$class . "$class.css"); 
+    if(is_file($this->config->paths->$class . "$class.js")) $this->config->scripts->add($this->config->urls->$class . "$class.js"); 
+    $this->defaults = self::getDefaultConfig();
+    $this->data = wire('modules')->getModuleConfigData($this);
+    
+    //inject uploader when loading the upload frontend page
+    if(isset($_SERVER['REQUEST_URI']) &&
+      strpos($_SERVER['REQUEST_URI'], $this->defaults['uploader_page']['value']) !== false){
+      $this->addHookAfter('TemplateFile::render', $this, 'renderUploader');
+    }
+    $uploadPages = wire('pages')->find("template=upload, check_access=0, include=all");
+    foreach ($uploadPages as $key => $p) {
+      if(isset($_SERVER['REQUEST_URI']) &&
+      strpos($_SERVER['REQUEST_URI'], "/edit?id=".$p->id) !== false){
+        // we are editing an upload file page
+        // need to inject the confirmation tab
+        $this->message("HEY YOU'RE EDITING ". $p->name);
+        $this->addHookAfter('ProcessPageEdit::buildForm', $this, 'hookUploadEdit');
+        if($this->input->post->id > 0){
+
+        }
+        
+      }
+    }
+  }
+
+  public function ready(){
+
+  }
+
+  public function hookUploadEdit($event){
+    $form = $event->return;
+    $page = $event->object->getPage();
+    
+    /*foreach ($page as $key => $value) {
+      $this->message($key . " => " . $value);
+    }
+
+    foreach ($form as $key => $value) {
+      $this->message($key . " => " . $value);
+    }*/
+    
+    $form->append($this->buildFormConfirm($page));
+    //$event->return = $event->return;
+    $event->return = $form;
+  }
+
+  protected function buildFormConfirm($page){
+    $wrapper = new InputfieldWrapper();
+
+    $id = 'UploadConfirm';
+    $title = $this->_('Request Confirmation'); // Tab Label: Request Confirmation
+    $wrapper->attr('id', $id); 
+    $wrapper->attr('title', $title); 
+    //$this->tabs[$id] = $title;
+
+    /*$processconfirmid = wire('modules')->getModuleID("ProcessUploadConfirm");
+    $confirmpage = wire('pages')->get("process=$processconfirmid");*/
+    // $url = $confirmpage->httpUrl . "?q=" . $page->hash;
+    $confirmpage = "http://localhost/ProcessWire-dev/confirm/";
+    $url = $confirmpage . "?q=" . $page->hash;
+
+    $field = $this->modules->get('InputfieldTextarea');
+    $field->id = "message";
+    $field->name = "message";
+    $field->label = "Confirmation Request Message";
+    $field->value = str_replace("[url]", $url, $this->defaults["email_message"]["value"]);
+
+    $button = $this->modules->get('InputfieldSubmit');
+    $button->id = "submit";
+    $button->name = "submit";
+    $button->label = 'Send Confirmation Request';
+    $button->icon = 'paper-plane';
+
+    $wrapper->append($field);
+    $wrapper->append($button);
+
+
+    return $wrapper;
+  }
+
+  protected function flattenConfig($array){
+    // returns an array that has just the key,value relations of the config arrays
+    // removes the types and labels
+    $out = array();
+    foreach ($array as $key => $value) {
+      $out[$key] = $value['value'];
+    }
+    return $out;
+  }
+
+  protected function renderUploader(HookEvent $event){
+    /*$options = $event->object->options;
+    $page = $event->object->page;
+    if($page->id !== $this->data['uploader_page_id']){
+      return;
+    }
+    $defaults = self::getDefaultConfig();
+    $materialPages = $this->wire('pages')->find("template=material, available=1, check_access=0, include=all");
+    $uploadPages = $this->wire('pages')->find("template=upload");
+    $json = $this->pagesToJSON($materialPages, "materials");
+    $configjson = $this->configToJSON();
+    if(is_array($options) && array_key_exists('pageStack', $options)){
+      ob_start();
+      require($defaults['uploader_filepath']['value'].".php");
+      $output = "\n".ob_get_contents()."\n";
+      ob_end_clean();
+      $output = "<script type='text/javascript'>".$json.$configjson."</script>".$output;
+      $event->return = str_ireplace("[uploader]", $output, $event->return);
+    }*/
+    //let's build the form in php instead
+    $form = wire('modules')->get('InputfieldForm');
+    $form->attr('id+name', 'Uploader'); 
+    $form->attr('action', './?id=' . $this->id . ($this->input->get->modal ? "&modal=1" : '')); 
+    $form->attr('method', 'post'); 
+    $form->attr('enctype', 'multipart/form-data'); 
+    $form->attr('class', 'upload-form'); 
+    $form->attr('autocomplete', 'off');
+    $event->return = str_ireplace("[uploader]", $form->render(), $event->return);
+  }
+
+  private function pagesToJSON($pageArray, $varName){
+    $out = "var " . $varName . " = [ \n";
+    foreach ($pageArray as $key => $value) {
+      $out .= "{ \n";
+      $properties = $value->getIterator();
+      foreach ($properties as $propKey => $propValue) {
+        $out .= '"'.$this->sanitizeJSON($propKey).'"'. " : " . '"'.$this->sanitizeJSON($propValue).'"' . ",\n";
+      }
+      $out = rtrim($out, ",\n");
+      $out .= "\n},\n";
+    }
+    $out = rtrim($out, ",\n");
+    $out .= "];";
+    return $out;
+  }
+
+  private function configToJSON(){
+    $json = "var config = {";
+    $defaults = $this->flattenConfig(self::getDefaultConfig());
+    foreach ($defaults as $key => $value) {
+      if(gettype($value) == "string"){
+        $json .= '"'.$this->sanitizeJSON($key).'"'." : ".'"'.$this->sanitizeJSON($value).'"'.",\n";
+      }
+    }
+    $json = rtrim($json, ",\n");
+    $json .= "\n};";
+    return $json;
+  }
+
+  private function sanitizeJSON($value){
+    $value = str_replace('"', '\"', $value);
+    return $value;
+  }
+
+  private function getTemplate($fieldsArray, $type){
+    $t = $this->templates->get("name=".$type);
+    if(!$t->id){
+        $t = new Template();
+        $t->name = $type;
+        $t->tags = "uploader";
+        $t->noChildren = 0;
+        $t->noParents = 0;
+        $t->fieldgroup = $this->getFieldgroup($fieldsArray, $type);
+        $t->save();
+    }
+    return $t;
+  }
+
+  private function getFieldgroup($fieldsArray, $type){
+    $fg = $this->fieldgroups->get("name=".$type);
+    if(!$fg->id){
+        $fg = new Fieldgroup();
+        $fg->name = $type;
+        foreach ($fieldsArray as $name => $kind) {
+            $fg->append($this->getField($name, $kind));
+        }
+        $fg->save();
+    }
+    
+    return $fg;
+  }
+
+  private function getField($name, $type){
+    $f = $this->fields->get("name=$name");
+    if(!$f->id){
+        $f = new Field();
+        $f->name = $name;
+        $f->type = $type;
+        if(!strcmp($type, "FieldtypeFile")){
+          $f->extensions = str_replace(",", " ", self::getDefaultConfig()["allowed_filetypes"]["value"]);
+          $f->maxFiles = 1;
+        }
+        if(!strcmp($type, "FieldtypePage")){
+          // TODO: custom configuration for page fieldtype?
+          $f->template_id = wire('templates')->get("name=material")->id;
+        }
+        $f->label = ucwords(str_replace("_", " ", $name));
+        $f->tags = "uploader";
+        $f->save();
+    }
+    return $f;
+  }
+
+  private function getUploaderPage(){
+    $p = $this->wire('pages')->get("name=uploader");
+    if(!$p->id){
+      $p = new Page();
+      $p->template = "admin";
+      $p->name = "uploader";
+      $p->title = "Uploader";
+      $p->process = $this->wire('modules')->get('ProcessList');
+      $p->parent = $this->wire('pages')->get($this->wire('config')->adminRootPageID);
+      $p->save();
+    }
+    return $p->id;
+  }
+
+  private function getProcessPage($type, $parent){
+    $id = wire('modules')->getModuleID("Process".ucwords($type));
+    $this->message("Module ID: $id");
+    $p = $this->wire('pages')->get("process=$id");
+    $this->message("Process Page: ID: $p->id Name: $p->name");
+    if(!$p->id){
+      $p = new Page();
+      $p->template = "admin";
+      $p->name = $type;
+      $p->title = ucwords($type);
+      $p->process = $this->wire('modules')->get('Process'.ucwords($type));
+      $p->parent = $parent;
+      $p->save();
+    }
+    return $p->id;
+  }
+
+  public function ___install() {
+    $defaults = self::getDefaultConfig();
+    $fields = self::getTemplateFields();
+    $uploadTemplate = $this->getTemplate($fields['upload_fields'], 'upload');
+    $materialTemplate = $this->getTemplate($fields['material_fields'], 'material');
+    $this->uploadTemplateID = $uploadTemplate->id;
+    $this->materialTemplateID = $materialTemplate->id;
+    $uploaderPage = $this->getUploaderPage();
+    $materialsPage = $this->getProcessPage("material", $uploaderPage);
+    $uploadsPage = $this->getProcessPage("upload", $uploaderPage);
+    wire('modules')->saveModuleConfigData($this, $this->flattenConfig($defaults));
+  }
+
+  public function ___uninstall() {
+  }
+
+  public static function getModuleConfigInputFields(array $data) {
+    $inputfields = new InputFieldWrapper();
+    $defaults = self::getDefaultConfig();
+
+    foreach ($defaults as $key => $value) {
+        $field = wire('modules')->get($value['type']);
+        $field->name = $key;
+        $field->label = $value['label'];
+        if(isset($data[$key])){
+          $field->value = $data[$key];
+        } else {
+          $field->value = $value['value'];
+        }
+        $inputfields->add($field);
+    }
+    return $inputfields;
+  }
+
+}
+?>

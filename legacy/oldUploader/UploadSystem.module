@@ -1,0 +1,140 @@
+<?php
+
+/*
+* A² Fab Lab Upload System
+* Thomas R. Storey (thomasrstorey.net)
+* contact: storey.thomas@gmail.com
+* 2/12/15
+* Makes an admin page to manage the upload system and uploaded files
+*/
+
+    class UploadSystem extends WireData implements Module{
+
+        public static function getModuleInfo() {
+            return array(
+                'title' => 'A² Fab Lab Upload System',
+                'summary' => 'The Root Module for the A² Fab Lab Upload System. Installs several other modules that make it all work.',
+                'version' => 100,
+                'author' => "Thomas R Storey",
+                'autoload' => true,
+                'permanent' => false,
+                'installs' => array(
+                                    "ProcessMaterial",
+                                    "ProcessUpload",
+                                    "ProcessUploader",
+                                    "ProcessUploadConfirm",
+                                    "ProcessUploadEmailer"
+                                )
+            );
+        }
+
+        public static function getTemplateFields(){
+            return array(
+              'upload_fields' => array(
+                'username' => 'FieldtypeText',
+                'email' => 'FieldtypeEmail',
+                'ufid' => 'FieldtypeInteger',
+                'timestamp' => 'FieldtypeDatetime',
+                'upload_file' => 'FieldtypeFile',
+                'dimensions' => 'FieldtypeText',
+                'units' => 'FieldtypeText',
+                'material' => 'FieldtypePage',
+                'notes' => 'FieldtypeTextarea',
+                'confirm' => 'FieldtypeCheckbox',
+                'hash' => 'FieldtypeText'
+                ),
+              'material_fields' => array(
+                'color' => 'FieldtypeText',
+                'notes' => 'FieldtypeTextarea',
+                'available' => 'FieldtypeCheckbox'
+                )
+              );
+        } 
+
+        public function init(){
+            // This module is, at least for now, purely an organizational convenience.
+            // I think it will eventually handle installing/uninstalling and cronjobs
+        }
+
+        private function deletePagesByTemplate($name){
+            $pages = $this->wire('pages')->find("template=$name, include=all, check_access=0");
+            foreach ($pages as $key => $p) {
+              $this->message("Page:" . $key . " => " . $p);
+              if($p->fields->get("name=upload_file")->id){
+                $file = $p->upload_file;
+                $p->of(false);
+                $p->upload_file->deleteAll();
+                $p->save();
+                $p->of(true);
+              }
+              $this->message("delete page: " . $p->name);
+              $this->wire('pages')->delete($p, true);
+            }
+          }
+
+        private function deleteTemplateByName($name){
+            $this->message("Template:" . $name);
+            $template = wire('templates')->get($name);
+            $fg = wire('fieldgroups')->get($name);
+            if($template->id){
+              $this->message("delete template: " . $template->name);
+              $this->wire("templates")->delete($template);
+              
+            }
+            if($fg->id){
+              $this->message("delete fieldgroup: " . $fg->name);
+              $this->wire("fieldgroups")->delete($fg);
+            }
+        }
+
+        private function deleteFields($fields){
+            foreach($fields as $key => $f){
+              $this->message("Field:" . $key . " => " . $f);
+              $field = $this->wire('fields')->get($key);
+              if($field->id && !strcmp($field->tags, "uploader")) {
+                $this->message("delete field: " . $field->name);
+                $this->wire('fields')->delete($field);
+              }
+            }
+        }
+
+        private function deletePageByName($name){
+            $this->message("page name: " . $name);
+            $page = $this->wire('pages')->get("name=$name, include=all, check_access=0");
+            if($page->id){
+              $this->message("delete page: " . $page->name);
+              $this->wire('pages')->delete($page, true);
+            }
+        }
+
+        private function deletePagesByProcess($prarray){
+            foreach ($prarray as $pname) {
+                $this->message("process page: " . $pname);
+                $id = wire('modules')->getModuleID($pname);
+                $this->message("Module ID: $id");
+                if($id){
+                    $ppgs = wire("pages")->find("process=$id, include=all, check_access=0");
+                    foreach ($ppgs as $key => $page) {
+                        $this->message("delete process page: " . $page->name);
+                        $this->wire("pages")->delete($page, true);
+                    }
+                }
+                
+            }
+        }
+
+        public function ___uninstall() {
+            $fields = $this->getTemplateFields();
+            $this->deletePagesByTemplate("upload");
+            $this->deletePagesByTemplate("material");
+            $this->deleteTemplateByName("upload");
+            $this->deleteTemplateByName("material");
+            $this->deleteFields($fields['upload_fields']);
+            $this->deleteFields($fields['material_fields']);
+            $this->deletePageByName("uploader");
+            //$this->deletePageByName("material");
+            $this->deletePagesByProcess(array("ProcessUpload", "ProcessMaterial", "ProcessUploadEmailer", "ProcessUploadConfirm"));
+            //parent::___uninstall();
+        }
+    }
+?>

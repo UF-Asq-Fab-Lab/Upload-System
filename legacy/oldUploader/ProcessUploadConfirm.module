@@ -1,0 +1,118 @@
+<?php
+/**
+ * A²Fab Lab Uploads Confirmer
+ *
+ * Developed for the A² Fab Lab at the University of Florida.
+ * Sends an email to the manager when the correct user lands on the page.
+ * 
+ * Thomas R Storey, 2015
+ * Licensed under MIT License, see LICENSE.TXT
+ * 
+ * http://fablab.arts.ufl.edu
+ * https://github.com/UF-Asq-Fab-Lab
+ *
+ */
+
+class ProcessUploadConfirm extends Process implements ConfigurableModule {
+  //The idea is, this is a front-facing page that holds an array of md5 hashes.
+  //The user has been sent an email that has a link like this:
+  //http://fablab.arts.ufl.edu/confirm-upload?confirm=023pq2h8akw8hegi83hp98g2hoghag8wa
+  //The page searches for a hash matching that one, matches that to a uploaded file, then sets the "confirmed"
+  //checkbox on that file to true.
+
+  protected $page; 
+  protected $hashes;
+  protected $confirmed;
+  protected $data;
+
+  public static function getModuleInfo() {
+    return array(
+      'title' => 'Upload Confirm',
+      'summary' => 'Sends an email to the manager when the correct user lands on the page.',
+      'version' => 100,
+      'permanent' => false,
+      'requires' => array('UploadSystem>=1.0.0'),
+      'permission' => 'admin-upload'
+      );
+  }
+
+  public static function getDefaultConfig(){
+    return array(
+      'confirmation_message' => array(
+        'type' => 'InputfieldText',
+        'value' => 'Thanks for confirming your upload. The lab has been notified that you want to print this file.',
+        'label' => 'Please provide a default message for confirmation request emails.'
+        ),
+      'email' => array(
+        'type' => 'InputfieldEmail',
+        'value' => 'managerEmail@host.com',
+        'label' => 'Please provide the contact email for the upload manager.'
+        ),
+      'error_message' => array(
+        'type' => 'InputfieldText',
+        'value' => 'bla bla bla',
+        'label' => 'Please provide a default message for when something goes wrong'
+        ),
+      'print_message' => array(
+        'type' => 'InputfieldText',
+        'value' => 'stuff',
+        'label' => 'Please provide a default message to notify the manager that a file was confirmed for printing'
+        )
+    );
+  }
+
+  public function init() {
+    $this->data = wire('modules')->getModuleConfigData($this);
+    $this->page = wire('page');
+    $this->hashes = explode(",", $this->page->hashes); //comma separated string of hashes -> array of string hashes
+    $index = array_search(wire('input')->get->confirm, $this->hashes);
+    if($index != false && wire("fields")->get("hash")->id){
+      $upload_page = wire('pages')->get("hash=".$this->hashes[$index]);
+      $upload_page->confirm = true;
+      $this->hashes = array_splice($this->hashes, $index, 1);
+      $this->confirmed = true;
+    } else {
+      $this->confirmed = false;
+    }
+  }
+
+  public function ___execute() {
+    if($confirmed){
+      $mailer = wireMail();
+      $mailer->to($this->data['email'], 'UF A² Fab Lab Uploads Manager')->from(wire('user')->email, wire('user')->name);
+      $mailer->subject("File Confirmed for Printing")->body($data['print_message']);
+      $recepients = $mailer->send();
+      // mail_utf8($this->data["email"], wire('user')->name, wire('user')->email, "File Confirmed For Printing", $data["print_message"]);
+      return renderMsg("confirmation_message");
+    } else {
+      return renderMsg("error_message");
+    }
+  }
+
+  private function renderMsg($key) {
+    $data = wire('modules')->getModuleConfigData("ProcessUploadConfirm");
+    return "<p>".$data[$key]."</p>";
+  }
+
+
+  public static function getModuleConfigInputFields(array $data) {
+    $inputfields = new InputFieldWrapper();
+    $defaults = self::getDefaultConfig();
+
+    foreach ($defaults as $key => $value) {
+        $field = wire('modules')->get($value['type']);
+        $field->name = $key;
+        $field->label = $value['label'];
+        if(isset($data[$key])){
+          $field->value = $data[$key];
+        } else {
+          $field->value = $value['value'];
+        }
+        $inputfields->add($field);
+    }
+    return $inputfields;
+  }
+
+}
+
+?>

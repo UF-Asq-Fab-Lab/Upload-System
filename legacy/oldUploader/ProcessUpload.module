@@ -1,9 +1,9 @@
-<?php 
+<?php
 /**
  * A²Fab Lab Uploads Manager Module
  *
  * Developed for the A² Fab Lab at the University of Florida.
- * Lists all 3d printing materials in an admin tab page.
+ * Lists all uploaded files in an admin tab page.
  * 
  * Thomas R Storey, 2015
  * Licensed under MIT License, see LICENSE.TXT
@@ -13,16 +13,16 @@
  *
  */
 
-class ProcessMaterial extends ProcessPageType {
+class ProcessUpload extends ProcessPageType {
   static public function getModuleInfo(){
     return array(
-      'title' => 'ProcessMaterial',
+      'title' => 'ProcessUpload',
       'version' => 100,
-      'summary' => 'Lists all 3d printing materials in an admin tab page.',
+      'summary' => 'Lists all uploaded files in an admin tab page.',
       'permanent' => false,
-      'permission' => 'materials-admin',
-      'requires' => array('Uploader>=1.0.0'),
-      'icon' => 'align-justify',
+      'permission' => 'uploads-admin',
+      'requires' => array('UploadSystem>=1.0.0'),
+      'icon' => 'inbox',
       'useNavJSON' => true
       );
   }
@@ -31,8 +31,8 @@ class ProcessMaterial extends ProcessPageType {
 
   public function __construct() {
     $this->set('showFields', array('name'));
-    if(wire('modules')->isInstalled("Uploader")){
-      $this->set('showFields', array('title', 'color', 'available'));
+    if(wire('modules')->isInstalled("ProcessUploader")){
+      $this->set('showFields', array('title', 'username', 'ufid', 'upload_file', 'confirm'));
     }
     $this->set('addLabel', $this->_('Add New')); 
     $this->set('jsonListLabel', 'name'); // what to use for 'label' property in JSON nav data
@@ -40,23 +40,23 @@ class ProcessMaterial extends ProcessPageType {
 
   public function init() {
     parent::init();
-    $this->template = $this->wire('templates')->get("name=material");
+    $this->template = $this->wire('templates')->get("name=upload");
     $this->lister = $this->wire('modules')->get("ProcessPageLister");
   }
 
   protected function getLister($selector = '') {
-    $selector = "template=material, include=all, check_access=0, $selector";
+    $selector = "template=upload, include=all, check_access=0, $selector";
     $lister = $this->lister;
     if(!$lister)return null;
     $lister->editMode = ProcessPageLister::windowModeDirect;
     $properties = array(
       'initSelector' => $selector,
       'columns' => $this->showFields,
-      'defaultSelector' => "title%=",
-      'defaultSort' => 'title',
+      'defaultSelector' => "username%=",
+      'defaultSort' => 'timestamp',
       'parent' => $this->page,
       'template' => $this->template,
-      'editURL' => './edit/',
+      'editURL' => './edit',
       'addURL' => './add/',
       'allowSystem' => false,
       'allowIncludeAll' => true
@@ -103,34 +103,19 @@ class ProcessMaterial extends ProcessPageType {
     }
   }
 
-  public function ___install(){
-    $parent = $this->wire('pages')->get("name=uploader");
-    $p = new Page();
-    $p->template = "admin";
-    $p->name = "materials";
-    $p->title = "Materials";
-    $p->process = $this;
-    $p->parent = $parent;
-    $p->save();
-    parent::___install();
-  }
-
   public function ___executeNavJSON(array $options = array()) {
-    $materialPages = $this->wire('pages')->find("template=material");
+    $uploadPages = $this->wire('pages')->find("template=upload");
     $parentID = $this->page->id;
-    
-    // pull icons out of pageLabelField and populate to an 'icon' property for JSON nav
-    $materialArray = array();
-    foreach($materialPages as $ep) {
-      $materialArray[] = $ep;
+    $uploadArray = array();
+    foreach($uploadPages as $up) {
+      $uploadArray[] = $up;
     }
-    
-    $options['items'] = $materialArray;
+    $options['items'] = $uploadArray;
     $options['itemLabel'] = 'title';
     $options['add'] = "add/?parent_id=".$parentID;
-    
     return parent::___executeNavJSON($options);
   }
 
 }
+
 ?>

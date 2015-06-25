@@ -1,0 +1,136 @@
+<?php
+/**
+ * A²Fab Lab Uploads Manager Module
+ *
+ * Developed for the A² Fab Lab at the University of Florida.
+ * Root Module that handles installing, uninstalling and hooking together
+ * the child modules for the Upload system.
+ *
+ * Thomas R Storey, 2015
+ * Licensed under MIT License, see LICENSE.TXT
+ *
+ * http://fablab.arts.ufl.edu
+ * https://github.com/UF-Asq-Fab-Lab
+ *
+ */
+
+class UploadFormBuilder extends ModuleJS implements Module{
+
+  protected $page;
+  protected $event;
+  protected $config_data;
+
+  public static function getModuleInfo() {
+    return array(
+      'title' => 'A² Fab Lab Upload Form Builder',
+      'summary' => 'Builds forms for the upload system',
+      'version' => 100,
+      'author' => "Thomas R Storey",
+      'autoload' => false,
+      'singular' => false,
+      'permanent' => false,
+      'requires' => array("Uploader>=1.0.0")
+    );
+  }
+
+  public function init(){
+
+  }
+
+  public function __construct($event, $page){
+    $this->event = $event;
+    $this->page = $page;
+    $this->config_data = $this->modules->getModuleConfigData("Uploader");
+  }
+
+  public function buildUploadForm(){
+    //build something using the inputfield form, return the rendered output
+    //$form = $this->modules->get("InputfieldForm");
+    //$wrapper = new InputfieldWrapper();
+    $wrapper = $this->modules->get("InputfieldForm");
+    $wrapper->attr('id', "Uploader");
+    $wrapper->attr('title', "Upload Form");
+
+    $inputfields = $this->modules->get("Uploader")->getInputfields();
+    $formfields = $inputfields['upload_form'];
+    foreach ($formfields as $key => $array) {
+        $field = $this->modules->get($array['type']);
+        foreach ($array as $key => $value) {
+          if(!strcmp($key, "type")) continue;
+          if(!strcmp($key, "options")){
+            $field->options = $value;
+          } else if(!strcmp($key, "findPagesSelector")) {
+            $field->findPagesSelector = $value;
+          } else if(!strcmp($key, "inputfield")) {
+            $field->inputfield = $value;
+          } else {
+            $field->attr($key, $value);
+          }
+        }
+        $wrapper->append($field);
+    }
+    return $wrapper->render();
+  }
+
+  public function buildConfirmForm(){
+    //build something using the inputfield form, return the rendered output
+    $get = $this->input->get;
+    if($this->pages->get("hash=$get->confirm, confirm=1, template=upload")->id){
+      return "<p>File confirmed for printing! Thanks!</p>";
+    } else {
+      return "<p>Something went wrong while confirming your file.</p>";
+    }
+  }
+
+  public function buildEditTab(){
+    //get the form from the event object, return it with new tab appended
+    $form = $this->event->return;
+    $uploadpage = $this->event->object->getPage();
+    $confirmPage = $this->pages->get($this->config_data["confirm_page_id"]);
+    $wrapper = new InputfieldWrapper();
+    $url = $confirmPage->httpUrl."?confirm=".$uploadpage->hash;
+    //$url = $this->uploader->get('confirm_page_path');
+    $id = 'UploadConfirm';
+    $title = $this->_('Request Confirmation'); // Tab Label: Request Confirmation
+    $wrapper->attr('id', $id);
+    $wrapper->attr('title', $title);
+
+    $field = $this->modules->get('InputfieldText');
+    $field->id = "subject";
+    $field->name = "subject";
+    $field->label = "Confirmation Request Subject";
+    $field->value = $this->config_data["request_subject"];
+    //$field->value = $this->uploader->get('request_subject');
+    $wrapper->append($field);
+
+    $field = $this->modules->get('InputfieldTextarea');
+    $field->id = "message";
+    $field->name = "message";
+    $field->label = "Confirmation Request Message";
+    $field->value = str_replace("[url]", $url, $this->config_data["request_body"]);
+    $wrapper->append($field);
+
+    $button = $this->modules->get('InputfieldSubmit');
+    $button->id = "send_request";
+    $button->name = "send_request";
+    $button->value = "Send Message";
+    $button->label = 'Send Confirmation Request';
+    $button->icon = 'paper-plane';
+
+    $wrapper->append($button);
+
+    return $wrapper;
+  }
+
+  protected function sendEmail($wrapper){
+    $mailer = wireMail();
+    $mailer->to("storey.thomas@gmail.com", "Admin")->from($this->config_data['contact_address'], 'UF A² Fab Lab Uploads Manager');
+    $mailer->subject($wrapper->get("subject"))->body($wrapper->get("message"));
+    $recepients = $mailer->send();
+    return $recepients;
+  }
+
+  //somewhere in here, add functions for special form behavior?
+
+}
+?>
