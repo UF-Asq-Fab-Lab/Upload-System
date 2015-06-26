@@ -3,8 +3,7 @@
  * A²Fab Lab Uploads Manager Module
  *
  * Developed for the A² Fab Lab at the University of Florida.
- * Root Module that handles installing, uninstalling and hooking together
- * the child modules for the Upload system.
+ * Builds and injects forms via hooks to the frontend and backend.
  *
  * Thomas R Storey, 2015
  * Licensed under MIT License, see LICENSE.TXT
@@ -45,11 +44,14 @@ class UploadFormBuilder extends ModuleJS implements Module{
 
   public function buildUploadForm(){
     //build something using the inputfield form, return the rendered output
-    //$form = $this->modules->get("InputfieldForm");
-    //$wrapper = new InputfieldWrapper();
+    $class = $this->className();
     $wrapper = $this->modules->get("InputfieldForm");
     $wrapper->attr('id', "Uploader");
     $wrapper->attr('title', "Upload Form");
+    // foreach ($this->config->urls as $key => $value) {
+    //   echo "<p>".$key." => ".$value."</p>";
+    // }
+
 
     $inputfields = $this->modules->get("Uploader")->getInputfields();
     $formfields = $inputfields['upload_form'];
@@ -59,6 +61,8 @@ class UploadFormBuilder extends ModuleJS implements Module{
           if(!strcmp($key, "type")) continue;
           if(!strcmp($key, "options")){
             $field->options = $value;
+          } else if(!strcmp($key, "label")) {
+            $field->label = $value;
           } else if(!strcmp($key, "findPagesSelector")) {
             $field->findPagesSelector = $value;
           } else if(!strcmp($key, "inputfield")) {
@@ -69,7 +73,10 @@ class UploadFormBuilder extends ModuleJS implements Module{
         }
         $wrapper->append($field);
     }
-    return $wrapper->render();
+    $cssinclude = '<link rel="stylesheet" type="text/css" href="%s"><link rel="stylesheet" type="text/css" href="%s">';
+    $cssinclude = sprintf($cssinclude, $this->config->urls->$class . "$class.css", $this->config->urls->adminTemplates."styles/font-awesome/css/font-awesome.min.css");
+
+    return $wrapper->render().$cssinclude;
   }
 
   public function buildConfirmForm(){
@@ -89,7 +96,6 @@ class UploadFormBuilder extends ModuleJS implements Module{
     $confirmPage = $this->pages->get($this->config_data["confirm_page_id"]);
     $wrapper = new InputfieldWrapper();
     $url = $confirmPage->httpUrl."?confirm=".$uploadpage->hash;
-    //$url = $this->uploader->get('confirm_page_path');
     $id = 'UploadConfirm';
     $title = $this->_('Request Confirmation'); // Tab Label: Request Confirmation
     $wrapper->attr('id', $id);
@@ -129,8 +135,6 @@ class UploadFormBuilder extends ModuleJS implements Module{
     $recepients = $mailer->send();
     return $recepients;
   }
-
-  //somewhere in here, add functions for special form behavior?
 
 }
 ?>
