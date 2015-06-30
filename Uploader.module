@@ -12,6 +12,11 @@
  * http://fablab.arts.ufl.edu
  * https://github.com/UF-Asq-Fab-Lab
  *
+ * TODO: Add estimated price, final price field for upload files
+ * TODO: Add tab to generate and submit charge for uplaod file (maybe best to do
+ * this from the Charges module?)
+ * TODO (future): Add three.js preview for uploaded files (fancy!)
+ *
  */
 
 class Uploader extends WireData implements Module, ConfigurableModule {
@@ -141,16 +146,17 @@ class Uploader extends WireData implements Module, ConfigurableModule {
         'username' => 'FieldtypeText',
         'email' => 'FieldtypeEmail',
         'ufid' => 'FieldtypeInteger',
-        'timestamp' => 'FieldtypeText',
+        'status' => 'FieldtypePage',
+        'estimated_price' => 'FieldtypeFloat',
+        'final_price' => 'FieldtypeFloat',
         'upload_file' => 'FieldtypeFile',
         'dimensions' => 'FieldtypeText',
         'units' => 'FieldtypeText',
         'material' => 'FieldtypePage',
         'notes' => 'FieldtypeTextarea',
         'confirm' => 'FieldtypeCheckbox',
-        'hash' => 'FieldtypeText',
-        'estimated_price' => 'FieldtypeText',
-        'estimated_completion' => 'FieldtypeText'
+        'timestamp' => 'FieldtypeText',
+        'hash' => 'FieldtypeText'
         ),
       'material_fields' => array(
         'title' => 'PageTitle',
@@ -158,6 +164,10 @@ class Uploader extends WireData implements Module, ConfigurableModule {
         'notes' => 'FieldtypeTextarea',
         'available' => 'FieldtypeCheckbox'
         ),
+      'status_fields' => array(
+          'title' => 'PageTitle',
+          'notes' => 'FieldtypeTextarea'
+        )
       );
   }
 
@@ -588,9 +598,9 @@ class Uploader extends WireData implements Module, ConfigurableModule {
           $f->maxFiles = 1;
         }
         if(!strcmp($type, "FieldtypePage")){
-          // TODO: custom configuration for page fieldtype?
-          $f->findPagesSelector = 'template=material, check_access=0, include=all';
-          $f->template_id = wire('templates')->get("name=material")->id;
+          // configure status and material page fields
+          $f->findPagesSelector = "template=$name, check_access=0, include=all";
+          $f->template_id = wire('templates')->get("name=$name")->id;
         }
         $f->label = ucwords(str_replace("_", " ", $name));
         $f->tags = "uploader";
@@ -671,13 +681,33 @@ class Uploader extends WireData implements Module, ConfigurableModule {
   *
   */
 
+  protected function getStatusPages($array){
+    $outarray = array();
+    foreach ($array as $name) {
+      if(!wire('pages')->get("name=$name, template=status")->id){
+        $p = new Page();
+        $p->template = wire('templates')->get("name=status");
+        $p->title = ucwords($name);
+        $p->save();
+        $outarray[] = $p;
+      }
+    }
+    return $outarray;
+  }
+
+  /**
+  *
+  */
+
   public function ___install(){
     $defaults = self::getDefaultConfig();
     $fields = self::getFields();
     $materialTemplate = $this->getTemplate($fields['material_fields'], 'material');
     $uploadTemplate = $this->getTemplate($fields['upload_fields'], 'upload');
+    $statusTemplate = $this->getTemplate($fields['status_fields'], 'status');
     $uploaderPage = $this->getUploaderPage();
     $confirmPage = $this->getConfirmPage();
+    $statusPages = $this->getStatusPages(array('received', 'confirmed', 'printing', 'complete', 'ready', 'failed'));
     $listPage = $this->getProcessListPage();
     $defaults = $this->flattenConfig($defaults);
     $defaults['uploader_page_id'] = $uploaderPage->id;
