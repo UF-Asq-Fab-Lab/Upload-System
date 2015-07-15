@@ -45,38 +45,70 @@ class UploadFormBuilder extends ModuleJS implements Module{
   public function buildUploadForm(){
     //build something using the inputfield form, return the rendered output
     $class = $this->className();
-    $wrapper = $this->modules->get("InputfieldForm");
-    $wrapper->attr('id', "Uploader");
-    $wrapper->attr('title', "Upload Form");
-    // foreach ($this->config->urls as $key => $value) {
-    //   echo "<p>".$key." => ".$value."</p>";
-    // }
-
-
     $inputfields = $this->modules->get("Uploader")->getInputfields();
     $formfields = $inputfields['upload_form'];
-    foreach ($formfields as $key => $array) {
-        $field = $this->modules->get($array['type']);
-        foreach ($array as $key => $value) {
-          if(!strcmp($key, "type")) continue;
-          if(!strcmp($key, "options")){
-            $field->options = $value;
-          } else if(!strcmp($key, "label")) {
-            $field->label = $value;
-          } else if(!strcmp($key, "findPagesSelector")) {
-            $field->findPagesSelector = $value;
-          } else if(!strcmp($key, "inputfield")) {
-            $field->inputfield = $value;
-          } else {
-            $field->attr($key, $value);
-          }
+    $markup = "<form id='upload_form' method='post' action='./' enctype='multipart/form-data'>";
+    foreach ($formfields as $key => $field) {
+        $type = $field['type'];
+        $id = $field['id'];
+        $label = $field['label'];
+        $name = $field['name'];
+        $required = $field['required'];
+        $value = $field['value'];
+        if($type != 'submit'){
+          $markup.= "<label for='{$name}'>{$label}</label>";
         }
-        $wrapper->append($field);
+        if($type == 'select'){
+          $markup.="<select id='{$id}' name={$name} value='{$value}' {$required}>";
+          if($key == 'material'){
+            $materials = wire('pages')->find("template=material, check_access=0, include=all");
+            echo count($materials);
+            foreach ($materials as $pagekey => $material) {
+              $markup.= "<option value='{$material->name}'>{$material->title}</option>";
+            }
+          } else if($key == 'units'){
+            $markup.= "<option value='in'>in</option><option value='cm'>cm</option><option value='mm'>mm</option>";
+          }
+          $markup.="</select>";
+        } else if ($type == 'textarea'){
+          $markup.="<textarea value={$value} id={$id} $name={$name}, {$required}></textarea>";
+        } else {
+          $markup.="<input type='{$type}' id='{$id}' name={$name} value='{$value}' {$required}>";
+          $markup.="</input>";
+        }
     }
-    $cssinclude = '<link rel="stylesheet" type="text/css" href="%s"><link rel="stylesheet" type="text/css" href="%s">';
-    $cssinclude = sprintf($cssinclude, $this->config->urls->$class . "$class.css", $this->config->urls->adminTemplates."styles/font-awesome/css/font-awesome.min.css");
+    $markup.="</form>";
+    $modulesUrl = wire('config')->urls->siteModules;
+    $markup = "<link rel='stylesheet' href='{$modulesUrl}Uploader/Uploader.css' />".$markup;
+    return $markup;
 
-    return $wrapper->render().$cssinclude;
+    // $wrapper = $this->modules->get("InputfieldForm");
+    // $wrapper->attr('id', "Uploader");
+    // $wrapper->attr('title', "Upload Form");
+    // $inputfields = $this->modules->get("Uploader")->getInputfields();
+    // $formfields = $inputfields['upload_form'];
+    // foreach ($formfields as $key => $array) {
+    //     $field = $this->modules->get($array['type']);
+    //     foreach ($array as $key => $value) {
+    //       if(!strcmp($key, "type")) continue;
+    //       if(!strcmp($key, "options")){
+    //         $field->options = $value;
+    //       } else if(!strcmp($key, "label")) {
+    //         $field->label = $value;
+    //       } else if(!strcmp($key, "findPagesSelector")) {
+    //         $field->findPagesSelector = $value;
+    //       } else if(!strcmp($key, "inputfield")) {
+    //         $field->inputfield = $value;
+    //       } else {
+    //         $field->attr($key, $value);
+    //       }
+    //     }
+    //     $wrapper->append($field);
+    // }
+    // $cssinclude = '<link rel="stylesheet" type="text/css" href="%s"><link rel="stylesheet" type="text/css" href="%s">';
+    // $cssinclude = sprintf($cssinclude, $this->config->urls->$class . "$class.css", $this->config->urls->adminTemplates."styles/font-awesome/css/font-awesome.min.css");
+    //
+    // return $wrapper->render().$cssinclude;
   }
 
   public function buildConfirmForm(){

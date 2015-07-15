@@ -146,7 +146,7 @@ class Uploader extends WireData implements Module, ConfigurableModule {
         'username' => 'FieldtypeText',
         'email' => 'FieldtypeEmail',
         'ufid' => 'FieldtypeInteger',
-        'status' => 'FieldtypePage',
+        'upload_status' => 'FieldtypePage',
         'estimated_price' => 'FieldtypeFloat',
         'final_price' => 'FieldtypeFloat',
         'upload_file' => 'FieldtypeFile',
@@ -164,7 +164,7 @@ class Uploader extends WireData implements Module, ConfigurableModule {
         'notes' => 'FieldtypeTextarea',
         'available' => 'FieldtypeCheckbox'
         ),
-      'status_fields' => array(
+      'upload_status_fields' => array(
           'title' => 'PageTitle',
           'notes' => 'FieldtypeTextarea'
         )
@@ -179,78 +179,92 @@ class Uploader extends WireData implements Module, ConfigurableModule {
     return array(
       'upload_form' => array(
         'is_water_tight' => array (
-          'type' => 'InputfieldCheckbox',
+          'type' => 'checkbox',
           'label' => 'Is your model water-tight?',
-          'id' => 'water_input',
-          'name' => 'water_input',
+          'id' => 'water',
+          'name' => 'water',
           'value' => 'unchecked',
-          'required' => true
+          'required' => 'required'
           ),
         'is_scaled' => array(
-          'type' => 'InputfieldCheckbox',
+          'type' => 'checkbox',
           'label' => 'Is your model scaled to the correct number of units?',
-          'id' => 'scaled_input',
-          'name' => 'scaled_input',
+          'id' => 'scaled',
+          'name' => 'scaled',
           'value' => 'unchecked',
-          'required' => true
+          'required' => 'required'
           ),
         'is_closed' => array(
-          'type' => 'InputfieldCheckbox',
+          'type' => 'checkbox',
           'label' => 'Is your model free of curves or open surfaces?',
-          'id' => 'closed_input',
-          'name' => 'closed_input',
+          'id' => 'closed',
+          'name' => 'closed',
           'value' => 'unchecked',
-          'required' => true
+          'required' => 'required'
           ),
         'material' => array(
-          'type' => 'InputfieldPage',
+          'type' => 'select',
           'label' => 'Material',
-          'required' => true,
-          'id' => 'material_input',
-          'name' => 'material_input',
-          'findPagesSelector' => 'template=material, check_access=0, include=all',
-          'inputfield' => 'InputfieldSelect',
-          'labelFieldName' => 'title'
+          'required' => 'required',
+          'id' => 'material',
+          'name' => 'material',
+          'value' => ''
           ),
         'units' => array(
-          'type' => 'InputfieldSelect',
+          'type' => 'select',
           'label' => 'Units',
-          'id' => 'units_input',
-          'name' => 'units_input',
-          'required' => true,
-          'options' => "+Inches\nMillimeters\nCentimeters"
+          'id' => 'units',
+          'name' => 'units',
+          'required' => 'required',
+          'value' => ''
           ),
-        'dimensions' => array(
-          'type' => 'InputfieldText',
-          'label' => 'Dimensions',
-          'id' => 'dimensions_input',
-          'name' => 'dimensions_input',
-          'required' => true,
-          'placeholder' => '<Length>x<Width>x<Height>'
-          ),
+        'length' => array(
+          'type' => 'number',
+          'label' => 'Length',
+          'id' => 'length',
+          'name' => 'length',
+          'required' => 'required',
+          'value' => 0
+        ),
+        'width' => array(
+          'type' => 'number',
+          'label' => 'width',
+          'id' => 'width',
+          'name' => 'width',
+          'required' => 'required',
+          'value' => 0
+        ),
+        'height' => array(
+          'type' => 'number',
+          'label' => 'height',
+          'id' => 'height',
+          'name' => 'height',
+          'required' => 'required',
+          'value' => 0
+        ),
         'comments' => array(
-          'type' => 'InputfieldTextarea',
+          'type' => 'textarea',
           'label' => 'Comments',
           'id' => 'comments_input',
           'name' => 'comments_input',
-          'required' => false,
+          'required' => '',
+          'value' => ''
           ),
         'file' => array(
-          'type' => 'InputfieldFile',
+          'type' => 'file',
           'label' => 'File',
-          'id' => 'file_input',
-          'name' => 'file_input',
-          'required' => true,
-          'extensions' => 'obj stl 3ds',
-          'maxFiles' => 1
+          'id' => 'upload',
+          'name' => 'upload',
+          'required' => 'required',
+          'value' => ''
         ),
         'submit' => array(
-          'type' => 'InputfieldSubmit',
+          'type' => 'submit',
           'label' => 'Upload File',
           'id' => 'upload_file',
           'name' => 'upload_file',
-          'value' => 'Upload File',
-          'icon' => 'upload'
+          'required' => '',
+          'value' => 'Upload File'
         )
       )
     );
@@ -287,14 +301,16 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       //send email confirming successful upload
       //send email to notify manager that a file has been uploaded
       $post = wire('input')->post;
-      $this->processUpload($post);
-      $this->sendEmail(wire('user')->email, wire('user')->name,
-                       $this->data['contact_address'], $this->data['contact_name'],
-                       $this->data['upload_subject'], $this->data['upload_body']);
-
-      $this->sendEmail($this->data['contact_address'], $this->data['contact_name'],
-                       $this->data['contact_address'], $this->data['contact_name'],
-                       $this->data['notification_subject'], $this->data['notification_body']);
+      if($this->processUpload($post)){
+        $this->sendEmail(wire('user')->email, wire('user')->name,
+                        $this->data['contact_address'], $this->data['contact_name'],
+                        $this->data['upload_subject'], $this->data['upload_body']);
+        $this->sendEmail($this->data['contact_address'], $this->data['contact_name'],
+                        $this->data['contact_address'], $this->data['contact_name'],
+                        $this->data['notification_subject'], $this->data['notification_body']);
+      } else {
+        $this->message('upload unsuccessful');
+      }
     }
 
     if(wire('input')->get->confirm){
@@ -335,12 +351,12 @@ class Uploader extends WireData implements Module, ConfigurableModule {
     $title = wire('sanitizer')->pageName(wire('user')->name);
     $email = wire('sanitizer')->email(wire('user')->email);
     $notes = wire('sanitizer')->textarea($post->comments_input);
-    $material = $post->material_input;
-    $units = $post->units_input;
-    $dimensions = $post->dimensions_input;
+    $material = $post->material;
+    $units = $post->units;
+    $dimensions = strval($post->length) + "x" + strval($post->width) + "x" + strval($post->height);
 
     // new wire upload
-    $u = new WireUpload('file_input');
+    $u = new WireUpload('upload');
     $u->setMaxFiles(1);
     $u->setOverwrite(false);
     $u->setDestinationPath($upload_path);
@@ -360,7 +376,7 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       $uploadpage->title = $title;
       $uploadpage->username = wire('user')->name;
       $uploadpage->ufid = wire('user')->ufid;
-      $uploadpage->material = wire('pages')->get("template=material, id=$material");
+      $uploadpage->material = wire('pages')->get("template=material, name=$material");
       $uploadpage->units = $units;
       $uploadpage->dimensions = $dimensions;
       $uploadpage->process = wire('modules')->get('ProcessUploadEmailer');
@@ -382,12 +398,14 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       }
       // save page
       $uploadpage->save();
+      return true;
   } else {
       // remove files
       foreach($files as $filename) unlink($upload_path . $filename);
 
       // get the errors
       foreach($u->getErrors() as $error) $message .= "<p class='error'>$error</p>";
+      return false;
   }
 
 }
@@ -594,11 +612,13 @@ class Uploader extends WireData implements Module, ConfigurableModule {
         $f->name = $name;
         $f->type = $type;
         if(!strcmp($type, "FieldtypeFile")){
-          $f->extensions = str_replace(",", " ", self::getDefaultConfig()["allowed_filetypes"]["value"]);
+          $af = self::getDefaultConfig();
+          $af = $af["allowed_filetypes"];
+          $f->extensions = str_replace(",", " ", $af["value"]);
           $f->maxFiles = 1;
         }
         if(!strcmp($type, "FieldtypePage")){
-          // configure status and material page fields
+          // configure upload_status and material page fields
           $f->findPagesSelector = "template=$name, check_access=0, include=all";
           $f->template_id = wire('templates')->get("name=$name")->id;
         }
@@ -681,13 +701,14 @@ class Uploader extends WireData implements Module, ConfigurableModule {
   *
   */
 
-  protected function getStatusPages($array){
+  protected function getStatusPages($array, $pid){
     $outarray = array();
     foreach ($array as $name) {
-      if(!wire('pages')->get("name=$name, template=status")->id){
+      if(!wire('pages')->get("name=$name, template=upload_status")->id){
         $p = new Page();
-        $p->template = wire('templates')->get("name=status");
+        $p->template = wire('templates')->get("name=upload_status");
         $p->title = ucwords($name);
+        $p->parent = wire('pages')->get($pid);
         $p->save();
         $outarray[] = $p;
       }
@@ -704,11 +725,11 @@ class Uploader extends WireData implements Module, ConfigurableModule {
     $fields = self::getFields();
     $materialTemplate = $this->getTemplate($fields['material_fields'], 'material');
     $uploadTemplate = $this->getTemplate($fields['upload_fields'], 'upload');
-    $statusTemplate = $this->getTemplate($fields['status_fields'], 'status');
+    $statusTemplate = $this->getTemplate($fields['upload_status_fields'], 'upload_status');
     $uploaderPage = $this->getUploaderPage();
     $confirmPage = $this->getConfirmPage();
-    $statusPages = $this->getStatusPages(array('received', 'confirmed', 'printing', 'complete', 'ready', 'failed'));
     $listPage = $this->getProcessListPage();
+    $statusPages = $this->getStatusPages(array('received', 'confirmed', 'printing', 'complete', 'ready', 'failed'), $listPage);
     $defaults = $this->flattenConfig($defaults);
     $defaults['uploader_page_id'] = $uploaderPage->id;
     $defaults['uploader_page_path'] = $uploaderPage->path;
@@ -725,6 +746,7 @@ class Uploader extends WireData implements Module, ConfigurableModule {
     $fields = self::getFields();
     $this->deletePagesByTemplate("upload");
     $this->deletePagesByTemplate("material");
+    $this->deletePagesByTemplate("upload_status");
     $this->deleteTemplateByName("upload");
     $this->deleteTemplateByName("material");
     $this->deleteFields($fields['upload_fields']);
