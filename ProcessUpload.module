@@ -4,10 +4,10 @@
  *
  * Developed for the A² Fab Lab at the University of Florida.
  * Lists all uploaded files in an admin tab page.
- * 
+ *
  * Thomas R Storey, 2015
  * Licensed under MIT License, see LICENSE.TXT
- * 
+ *
  * http://fablab.arts.ufl.edu
  * https://github.com/UF-Asq-Fab-Lab
  *
@@ -34,7 +34,7 @@ class ProcessUpload extends ProcessPageType {
     if(wire('modules')->isInstalled("Uploader")){
       $this->set('showFields', array('title', 'username', 'ufid', 'upload_file', 'confirm'));
     }
-    $this->set('addLabel', $this->_('Add New')); 
+    $this->set('addLabel', $this->_('Add New'));
     $this->set('jsonListLabel', 'name'); // what to use for 'label' property in JSON nav data
   }
 
@@ -125,7 +125,7 @@ class ProcessUpload extends ProcessPageType {
     $options['items'] = $uploadArray;
     $options['itemLabel'] = 'title';
     $options['add'] = "add/?parent_id=".$parentID;
-    return parent::___executeNavJSON($options);
+    return Process::___executeNavJSON($options);
   }
 
 }
