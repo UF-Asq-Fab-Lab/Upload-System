@@ -131,6 +131,16 @@ class Uploader extends WireData implements Module, ConfigurableModule {
         'type' => 'InputfieldTextarea',
         'value' => 'Go ahead and print it!',
         'label' => 'Confirmation Request Email Message'
+        ),
+        "required_role" => array(
+          'type' => 'InputfieldText',
+          'value' => 'user',
+          'label' => 'What role must a user have in order to view the frontend interface for this module? Leave blank to allow any logged in user.'
+        ),
+        "not_auth_message" => array(
+          'type' => 'InputfieldText',
+          'value' => 'Sorry, you must be logged in as a user that has completed a lab orientation to view this page.',
+          'label' => 'What message would you like to show when an unauthorized user tries to access the interface for this module?'
         )
     );
   }
@@ -450,8 +460,28 @@ class Uploader extends WireData implements Module, ConfigurableModule {
   *
   */
 
+  protected function checkPermission(HookEvent $event){
+    if(wire('modules')->isInstalled("LabUser") && $this->data['required_role'] != ''){
+      // user module is installed, require privileges
+      if(!wire('user')->isLoggedIn() || !wire('user')->hasRole($this->data['required_role'])){
+        // user is not authorized to use the module, render message.
+        $notAuthMessage = "<p class='error'>".$this->data["not_auth_message"]."</p>";
+        $event->return = str_replace("[uploader]", $notAuthMessage, $event->return);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+  *
+  */
+
   protected function hookUploadForm(HookEvent $event){
     $page = wire('page');
+    if(!$this->checkPermission($event)){
+      return;
+    }
     $formBuilder = new UploadFormBuilder($event, $page);
     $event->return = str_replace("[uploader]", $formBuilder->buildUploadForm(), $event->return);
   }
