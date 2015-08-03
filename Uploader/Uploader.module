@@ -463,7 +463,15 @@ class Uploader extends WireData implements Module, ConfigurableModule {
   protected function checkPermission(HookEvent $event){
     if(wire('modules')->isInstalled("LabUser") && $this->data['required_role'] != ''){
       // user module is installed, require privileges
-      if(!wire('user')->isLoggedIn() || !wire('user')->hasRole($this->data['required_role'])){
+      $reqroles = explode(",", $this->data['required_role']);
+      $hasrole = false;
+      foreach ($reqroles as $index => $value) {
+        if(!wire('user')->hasRole($value)){
+          $hasrole = true;
+          break;
+        }
+      }
+      if(!wire('user')->isLoggedIn() || !$hasrole){
         // user is not authorized to use the module, render message.
         $notAuthMessage = "<p class='error'>".$this->data["not_auth_message"]."</p>";
         $event->return = str_replace("[uploader]", $notAuthMessage, $event->return);
@@ -555,7 +563,7 @@ class Uploader extends WireData implements Module, ConfigurableModule {
     foreach($fields as $key => $f){
       $this->message("Field:" . $key . " => " . $f);
       $field = $this->wire('fields')->get($key);
-      if($field->id && !strcmp($field->tags, "uploader")) {
+      if($field->id && !strcmp($field->tags, "uploader") && !$field->numFieldgroups()) {
         $this->message("delete field: " . $field->name);
         $this->wire('fields')->delete($field);
       }

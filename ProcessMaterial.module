@@ -128,6 +128,7 @@ class ProcessMaterial extends ProcessPageType {
     $options['items'] = $materialArray;
     $options['itemLabel'] = 'title';
     $options['add'] = "add/?parent_id=".$parentID;
+    $options['edit'] = "edit/?id={id}";
 
     return Process::___executeNavJSON($options);
   }

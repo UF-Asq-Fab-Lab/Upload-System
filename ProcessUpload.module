@@ -56,7 +56,7 @@ class ProcessUpload extends ProcessPageType {
       'defaultSort' => 'timestamp',
       'parent' => $this->page,
       'template' => $this->template,
-      'editURL' => './edit',
+      'editURL' => './edit/',
       'addURL' => './add/',
       'allowSystem' => false,
       'allowIncludeAll' => true
@@ -125,6 +125,7 @@ class ProcessUpload extends ProcessPageType {
     $options['items'] = $uploadArray;
     $options['itemLabel'] = 'title';
     $options['add'] = "add/?parent_id=".$parentID;
+    $options['edit'] = "edit/?id={id}";
     return Process::___executeNavJSON($options);
   }
 
