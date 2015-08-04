@@ -12,7 +12,6 @@
  * http://fablab.arts.ufl.edu
  * https://github.com/UF-Asq-Fab-Lab
  *
- * TODO: Add estimated price, final price field for upload files
  * TODO: Add tab to generate and submit charge for uplaod file (maybe best to do
  * this from the Charges module?)
  * TODO (future): Add three.js preview for uploaded files (fancy!)
@@ -311,13 +310,20 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       //send email confirming successful upload
       //send email to notify manager that a file has been uploaded
       $post = wire('input')->post;
-      if($this->processUpload($post)){
+      $result = $this->processUpload($post);
+      if($result['code']){
+        $username = $result['user'];
+        $filename = $result['filename'];
+        $upload_body = str_replace("[filename]", $filename, $this->data['upload_body']);
+        $upload_body = str_replace("[username]", $username, $upload_body);
+        $notification_body = str_replace("[filename]", $filename, $this->data['notification_body']);
+        $notification_body = str_replace("[username]", $username, $notification_body);
         $this->sendEmail(wire('user')->email, wire('user')->name,
                         $this->data['contact_address'], $this->data['contact_name'],
-                        $this->data['upload_subject'], $this->data['upload_body']);
+                        $this->data['upload_subject'], $upload_body);
         $this->sendEmail($this->data['contact_address'], $this->data['contact_name'],
                         $this->data['contact_address'], $this->data['contact_name'],
-                        $this->data['notification_subject'], $this->data['notification_body']);
+                        $this->data['notification_subject'], $notification_body);
       } else {
         $this->message('upload unsuccessful');
       }
@@ -332,10 +338,15 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       $toconfirm = wire('pages')->get("hash=$get->confirm, template=upload, confirm=0, username=$username");
       if($toconfirm->id){
         $toconfirm->confirm = 1;
+        $toconfirm->upload_status = wire('pages')->get("name=confirmed")->id;
         $toconfirm->save();
+        $filename = $toconfirm->upload_file->first()->name;
+        $username = $toconfirm->username;
+        $confbody = str_replace("[username]", $username, $this->data["confirm_body"]);
+        $confbody = str_replace("[filename]", $filename, $confbody);
         if($this->sendEmail($email, $username,
                             $this->data['contact_address'], $this->data['contact_name'],
-                            $this->data['confirm_subject'], $this->data['confirm_body'])){
+                            $this->data['confirm_subject'], $confbody)){
           $this->message("Confirmation Notification Sent");
         }
       } else {
@@ -386,9 +397,10 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       $uploadpage->title = $title;
       $uploadpage->username = wire('user')->name;
       $uploadpage->ufid = wire('user')->ufid;
-      $uploadpage->material = wire('pages')->get("template=material, name=$material");
+      $uploadpage->material = wire('pages')->get("template=material, name=$material")->id;
       $uploadpage->units = $units;
       $uploadpage->dimensions = $dimensions;
+      $uploadpage->upload_status = wire('pages')->get("name=received")->id;
       $uploadpage->process = wire('modules')->get('ProcessUploadEmailer');
       $uploadpage->notes = $notes;
       $uploadpage->hash = md5($title);
@@ -408,13 +420,25 @@ class Uploader extends WireData implements Module, ConfigurableModule {
       }
       // save page
       $uploadpage->save();
-      return true;
+
+      $result = array(
+        "code" => 1,
+        "filename" => $files[0],
+        "user" => wire('user')->name
+      );
+      return $result;
   } else {
       // remove files
       foreach($files as $filename) unlink($upload_path . $filename);
 
       // get the errors
       foreach($u->getErrors() as $error) $message .= "<p class='error'>$error</p>";
+      $result = array(
+        "code" => 0,
+        "filename" => null,
+        "user" => null
+      );
+
       return false;
   }
 
